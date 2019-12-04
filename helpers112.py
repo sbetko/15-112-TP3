@@ -62,3 +62,8 @@ def roundHalfUp(d):
     # You do not need to understand how this function works.
     rounding = decimal.ROUND_HALF_UP
     return int(decimal.Decimal(d).to_integral_value(rounding=rounding))
+
+# Copied from:
+# https://www.cs.cmu.edu/~112/notes/notes-graphics-part2.html#customColors
+def rgbString(red, green, blue):
+    return "#%02x%02x%02x" % (red, green, blue)

@@ -1,4 +1,5 @@
 import math, random, copy, numbers
+from helpers112 import rgbString
 
 # with support for up to 2 dimensional lists
 def almostEqual(a, b):
@@ -183,7 +184,6 @@ def makeGaussian2dList(rows, cols, mu, sigma):
         for j in range(cols):
             L[i][j] = random.gauss(mu, sigma)
     return L
-
 
 # Flattens a 2d list into a 1d list
 def flatten2dList(lst):

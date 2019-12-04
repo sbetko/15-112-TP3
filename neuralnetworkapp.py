@@ -1,15 +1,22 @@
-import math, random, copy, numbers, os, decimal
+import math, random, copy, numbers, os
 
 # Taken from course site: https://www.cs.cmu.edu/~112/notes/cmu_112_graphics.py
 from cmu_112_graphics import *
 from tkinter import *
-# Helper functions adapted from course website
+
+# Helper functions adapted from course website, citations included inside
 from helpers112 import *
 
 # My imports and code
 from mydatasetlib import Dataset
 from myneuralnetwork import NeuralNetwork
 from mymathlib import *
+from mybuttonlib import *
+from mygraphicslib import *
+
+# Taken from here https://docs.python.org/3/library/pickle.html
+# For serializing the network
+import pickle
 
 # This is for performance purposes
 import psutil
@@ -21,9 +28,9 @@ psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 # TODO: Implement Stochastic Gradient Descent
 #       - With variable batch size too
 # DONE Add mouse-hover to view parameter
-# TODO: Add validation set
-# TODO: Add a TEST MODE
-# TODO: Add model import / export
+# DONE: Add validation set
+# DONE: Add a TEST MODE
+# DONE: Add model import / export
 # TODO: Add input/output ghost for config help
 # TODO: Add a training set generator with choice of simple and complex boolean
 #       rules, with the respective test set generator
@@ -37,26 +44,70 @@ psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 # TODO: Add a plot of feature space? Only works for 2d, not really helpful
 # TODO: Speed up the matrix math a little bit
 
-class startMode(Mode):
+class StartMode(Mode):
     def appStarted(self):
-        pass
+        self.configureMainPanel()
+    
+    def configureMainPanel(self):
+        cx, cy = self.app.width/2, self.app.height/2
+        width, height = self.app.width/5, self.app.height/3
+        self.mainPanel = Panel(cx, cy, width, height)
+        
+        configModeButton = Button(self.switchToConfigMode, "Design Network")
+        aboutModeButton = Button(self.switchToAboutMode, "About")
+        importModelButton = Button(self.importModel, "Import Model")
+
+        self.mainPanel.addButton(configModeButton)
+        self.mainPanel.addButton(aboutModeButton)
+        self.mainPanel.addButton(importModelButton)
+
+    def switchToConfigMode(self):
+        self.app.initNetwork()
+
+        self.app.setActiveMode(self.app.configMode)
+    
+    def switchToAboutMode(self):
+        self.app.setActiveMode(self.app.infoMode)
+    
+    # Follows Python 3 docs here for unpickling objects:
+    # https://docs.python.org/3/library/pickle.html#pickling-class-instances
+    def importModel(self):
+        fileName = self.app.getUserInput("Please enter the filename (no extension)\n"
+                                    +"(Must be in program's working directory)")
+        myNetwork = None
+        try:
+            with open(fileName + ".nn", 'rb') as f :
+                myNetwork = pickle.load(f)
+            
+            self.loadModel(myNetwork)
+        except:
+            self.app.showMessage("Failed to load from file, please check that"
+                                +" you entered the correct filename.")
+    
+    def loadModel(self, myNetwork):
+        self.app.network = myNetwork
+        self.app.updateNetworkViewModel()
+        self.app.setActiveMode(self.app.trainMode)
 
     def mousePressed(self, event):
-        pass
+        point = (event.x, event.y)
+        bounds = self.mainPanel.getBounds()
+        if pointInBounds(point, bounds):
+            self.mainPanel.mousePressed(point)
     
     def redrawAll(self, canvas):
         title = "Build Your Own Neural Network"
         titleFont = "Helvetica 26"
         canvas.create_text(self.app.width/2, self.app.margin,
                            text = title, font = titleFont)
+        self.mainPanel.drawPanelVertical(canvas)
 
 class InfoMode(Mode):
     def appStarted(self):
         pass
 
     def keyPressed(self, event):
-        #if event.key == "Escape" or event.key == "?" or event.key == "/":
-        self.app.setActiveMode(self.app.configMode)
+        self.app.setActiveMode(self.app.startMode)
 
     def redrawAll(self, canvas):
         canvas.create_text(self.app.width // 2, self.app.margin,
@@ -95,6 +146,8 @@ class ConfigMode(Mode):
             self.app.setActiveMode(self.app.infoMode)
         elif event.key == "r":
             self.switchToDefaultParams()
+        elif event.key == "Escape":
+            self.app.setActiveMode(self.app.startMode)
 
         if newDims != None:
             self.app.network.resize(newDims)
@@ -184,7 +237,18 @@ class TrainMode(Mode):
         self.autoStep = 50
         self.showHelp = True
         self.currentLoss = 0
-        self.initializeLossGraph()
+        if self.app.network.exportState != None:
+            self.loadTrainState()
+        else:
+            self.initializeLossGraph()
+
+    def loadTrainState(self):
+        state = self.app.network.exportState
+        self.app.data = state['data']
+        self.lossPerEpoch = state['lossPerEpoch']
+        self.currentAccuracy = state['currentAccuracy']
+        self.currentLoss = state['currentLoss']
+        self.maxLoss = state['maxLoss']
 
     def modeActivated(self):
         self.doSoloHover = False
@@ -211,6 +275,9 @@ class TrainMode(Mode):
             self.showHelp = False if self.showHelp else True
         elif event.key == "b":
             self.app.debug = False if self.app.debug else True
+        elif event.key == "Enter":
+            self.isTraining = False
+            self.app.setActiveMode(self.app.testMode)
     
     def mousePressed(self, event):
         r = self.app.r
@@ -291,18 +358,33 @@ class TrainMode(Mode):
         if self.isTraining:
             self.doTraining(1)
 
-    # Calculates the loss of the network on the test set
+    # Calculates the loss of the network on the validation set and accuracy
+    # yHat is predicted y value
     def calculateLoss(self):
         cost = 0
-        self.latestModelIO = []
-        for example in self.app.data.test:
+        numCorrect = 0
+
+        for example in self.app.data.validation:
+            # Loss calculation
             x = example[0]
             yHat = self.app.network.forwardPropagation(x)
             y = example[1]
-            self.latestModelIO.append((x, yHat))
             cost += self.app.network.cost(y, yHat)
-        self.currentLoss = cost / len(self.app.data.train)
-        epochLossTuple = (self.app.network.numTrainingIterations, self.currentLoss)
+            # Accuracy calculation
+            highestPercentage = -1
+            for i in range(len(yHat)):
+                if yHat[i][0] > highestPercentage:
+                    highestPercentage = yHat[i][0]
+                    winningLabelIndex = i
+
+            # test against true label
+            if y[winningLabelIndex] == [1]:
+                numCorrect += 1
+
+        self.currentAccuracy = numCorrect / len(self.app.data.validation)
+        self.currentLoss = cost / len(self.app.data.validation)
+        epochLossTuple = (self.app.network.numTrainingIterations,
+                          self.currentLoss)
         self.lossPerEpoch.append(epochLossTuple)
         self.updateLossMaxMin()
 
@@ -319,17 +401,20 @@ class TrainMode(Mode):
     # afterwards
     def doTraining(self, iterations):
         self.app.network.train(self.app.data.train, iterations, self.app.alpha)
-        print(f'{self.app.network.test(self.app.data.test)}/{len(self.app.data.test)}')
+        numCorrect = self.app.network.test(self.app.data.validation)
+        self.validationAccuracy = f'{numCorrect}/{len(self.app.data.validation)}'
+        print(f'{numCorrect}/{len(self.app.data.validation)}')
         self.calculateLoss()
 
+    # TODO: transfer this to graphics lib
     # Maps a percentage of the color legend (0.00 - 1.00) to the color at that
     # relative point along the legend
     def mapPercentToLegendColor(self, percent):
         percent *= 2
         if 0 <= percent < 1:
-            return self.app.rgbString(255, 50, int(percent*255))
+            return rgbString(255, 50, int(percent*255))
         else:
-            return self.app.rgbString(int((2 - percent)*255), 50, 255)
+            return rgbString(int((2 - percent)*255), 50, 255)
 
     # Draw axes and associated values for loss graph
     def drawLossGraphGrid(self, canvas, h, w, tY, bY, rX, lX):
@@ -434,7 +519,6 @@ class TrainMode(Mode):
                 nodeCoord = self.app.nodeCoordinates[layerIndex][nodeIndex]
                 if nodeCoord == (x, y):
                     return (layerIndex, nodeIndex)
-        
 
     # Draws loss graph in top left
     def drawLossGraph(self, canvas):
@@ -470,6 +554,7 @@ class TrainMode(Mode):
         legendBottomY = self.app.height - self.app.margin
         legendRightX = self.app.margin + legendWidth
         legendLeftX = self.app.margin
+        # TODO: insert drawColorGradientVertical(canvas, x, y, width, height, rgb1, rgb2)
         canvas.create_rectangle(legendLeftX, legendTopY,
                                 legendRightX, legendBottomY)
         numPixels = legendBottomY - legendTopY
@@ -477,7 +562,7 @@ class TrainMode(Mode):
             percent = px / numPixels
             canvas.create_line(legendLeftX, legendTopY + px, legendRightX, legendTopY + px,
                                 fill = self.mapPercentToLegendColor(percent))
-        
+        ########
         canvas.create_text(legendRightX, legendTopY, text = " +", anchor = "w")
         canvas.create_text(legendRightX, legendTopY + numPixels/2, text = " 0", anchor = "w")
         canvas.create_text(legendRightX, legendBottomY, text = " -", anchor = "w")
@@ -488,9 +573,12 @@ class TrainMode(Mode):
                            text = f'Iteration: {self.app.network.numTrainingIterations}')
 
         lossString = "%.7f" % self.currentLoss
+        accuracy = self.currentAccuracy * 100
+        accuracyString = "%.2f" % self.currentAccuracy
         s = (f'Training Mode\n\n'
             +f'Learning rate: {self.app.alpha}\n'
-            +f'Loss on validation set: {lossString}\n\n')
+            +f'Loss on validation set: {lossString}\n'
+            +f'Accuracy on validation set: {accuracyString}\n\n')
 
         if self.showHelp:
             s += ('Press h to hide help.\n\n'
@@ -520,15 +608,219 @@ class TrainMode(Mode):
         canvas.create_oval(self.mouse[0]- 5, self.mouse[1] - 5,
                            self.mouse[0]+ 5, self.mouse[1] + 5)
 
+class TestMode(Mode):
+    RGB1 = "247251255"
+    RGB2 = "008048107"
+    def appStarted(self):
+        self.testData = self.app.data.test
+        self.numExamples = len(self.testData)
+        self.numLabels = self.app.data.numLabels
+        self.maxMarginalCount = 0
+        self.generateConfusionMatrix()
+        self.precision = self.calculatePrecision()
+        self.recall = self.calculateRecall()
+        self.f1Score = self.calculateF1()
+        self.precisionFormatted = '%0.5f' % self.precision
+        self.recallFormatted = '%0.5f' % self.recall 
+        self.f1ScoreFormatted = '%0.5f' % self.f1Score
+        self.configureMainPanel()
+    
+    def configureMainPanel(self):
+        x, y = self.app.width / 2, self.app.height / 2
+        width = self.app.width / 15
+        height = self.app.height / 20
+        self.mainPanel = Panel(x, y, width, height, anchor = "nw")
+        self.mainPanel.backgroundColor = "lightgray"
+
+        exportModelButton = Button(self.exportModel, "Export Model")
+        
+        self.mainPanel.addButton(exportModelButton)
+    
+    # I used the method described in the Python 3 docs to write to pickle an
+    # object
+    # https://docs.python.org/3/library/pickle.html#module-pickle
+    def exportModel(self):
+        fileName = self.app.getUserInput("Please enter a filename") + '.nn'
+        f = open(fileName, 'wb')
+        self.app.network.exportState = {
+            'data' : self.app.data,
+            'lossPerEpoch' : self.app.trainMode.lossPerEpoch,
+            'currentAccuracy' : self.app.trainMode.currentAccuracy,
+            'currentLoss' : self.app.trainMode.currentLoss,
+            'maxLoss' : self.app.trainMode.maxLoss}
+
+        self.app.network.data = self.app.data
+        self.app.network.lossPerEpoch = self.app.trainMode.lossPerEpoch
+        pickle.dump(self.app.network, f)
+        f.close()
+    
+    def keyPressed(self, event):
+        if event.key == "Escape":
+            self.app.setActiveMode(self.app.startMode)
+    
+    # Called when the mouse is pressed, checks for button presses
+    def mousePressed(self, event):
+        point = (event.x, event.y)
+        bounds = self.mainPanel.getBounds()
+        if pointInBounds(point, bounds):
+            self.mainPanel.mousePressed(point)
+    
+    # Generates a 2d list of the confusion maatrix with rows representing
+    # predicted class and columns representing the actual (true) class.
+    def generateConfusionMatrix(self):
+        network = self.app.network
+        results = [(network.forwardPropagation(x), y) for (x, y) in self.testData]
+        matrix = make2dList(self.numLabels, self.numLabels)
+        for predicted, actual in results:
+            winningLabelIndex = None
+            highestPercentage = -1
+            for i in range(len(predicted)):
+                if predicted[i][0] > highestPercentage:
+                    highestPercentage = predicted[i][0]
+                    winningLabelIndex = i
+            # Test against true label
+            actualLabelIndex = actual.index([1])
+            matrix[winningLabelIndex][actualLabelIndex] += 1
+            cellVal = matrix[winningLabelIndex][actualLabelIndex]  
+            if cellVal > self.maxMarginalCount:
+                self.maxMarginalCount = cellVal
+        self.confusionMatrix = matrix
+    
+    # Constructs and draws the confusion matrix onto the canvas with a
+    # gradated color legend
+    def drawConfusionMatrix(self, canvas, x, y, width, height):
+        # Matrix
+        canvas.create_rectangle(x, y, x + width, y + height)
+        dRow = height/self.numLabels
+        dCol = width/self.numLabels
+        # Titles
+        canvas.create_text(x, y + height/2, text = "Predicted Class\n\n",
+                           angle = 90, anchor = "s", font = "Arial 9 bold")
+        canvas.create_text(x + width/2, y, text = "Actual Class\n\n",
+                           anchor = "s", font = "Arial 9 bold")
+        canvas.create_text(x + width/2, y - 20, text = "Confusion Matrix\n\n",
+                           font = "Arial 11 bold", anchor = "s")
+        maxCount = self.maxMarginalCount
+
+        # Create and fill squares with text and shading
+        for row in range(self.numLabels):
+            rowY = dRow*(row) + y
+            nextRowY = dRow*(row + 1) + y
+            midY = (rowY + nextRowY) / 2
+            canvas.create_line(x, rowY, x + width, rowY)
+            label = self.app.data.labels[row]
+            canvas.create_text(x, midY, text = label, angle = 90, anchor = "s")
+            for col in range(self.numLabels):
+                label = self.app.data.labels[col]
+                colX = dCol*(col) + x
+                nextColX = dCol*(col + 1) + x
+                midX = (colX + nextColX) / 2
+                canvas.create_line(colX, y, colX, y + height)
+                count = self.confusionMatrix[row][col] 
+                fill = mapPercentToLegendColor(count / (maxCount + 1),
+                                               self.RGB1, self.RGB2)
+                canvas.create_rectangle(colX, rowY, nextColX, nextRowY,
+                                        fill = fill)
+                marginalPercentString = "%0.2f" % (count / self.numExamples)
+                cellText = f'{count} ({marginalPercentString})'
+                canvas.create_text(midX, midY, text = cellText)
+                canvas.create_text(midX, y, text = label, anchor = "s")
+        
+        # Color legend
+        legendXOffset = self.app.width / 100
+        legendWidth = self.app.width / 40
+        drawColorGradientVertical(canvas, x + width + legendXOffset, y,
+                                  legendWidth, height, self.RGB2, self.RGB1)
+        # Tick marks
+        numTicks = 6
+        dY = height / numTicks
+        dCount = maxCount / numTicks
+        tickX = width + legendWidth + legendXOffset + x
+        for i in range(numTicks):
+            tickY = y + height - dY*i
+            canvas.create_line(tickX, tickY, tickX + 5, tickY)
+            canvas.create_text(tickX + 5, tickY, text = int(dCount*i),
+                               anchor = "w")
+
+    # Draws the performance measures onto the canvas
+    def drawPerformanceMeasures(self, canvas, x, y):
+        canvas.create_text(x, y, text = "Performance Measures",
+                           font = "Arial 12 bold", anchor = "nw")
+        
+        precisionString = f'Precision: {self.precisionFormatted}\n'
+        recallString = f'Recall: {self.recallFormatted}\n'
+        f1ScoreString = f'F1: {self.f1ScoreFormatted}\n'
+        performanceSummary = precisionString + recallString + f1ScoreString
+        canvas.create_text(x, y + 30, text = performanceSummary, anchor = "nw",
+                           font = "Arial 10")
+    
+    # Based on formulas in the ICML 2004 Notes on classification performance
+    # metrics: http://people.cs.bris.ac.uk/~flach/ICML04tutorial/ 
+    # Returns the precision as calculated by TP_avg / (TP_avg + FP_avg)
+    def calculatePrecision(self):
+        # Calculate sum of true positives for all classes
+        # Calculate sum of false positives for all classes
+        sumOfPrecisions = 0
+        for classIndex in range(self.numLabels):
+            sumOfPrecisions += self.calculatePrecisionForClass(classIndex)
+        avgPrecision = sumOfPrecisions / self.numLabels
+        return avgPrecision
+    
+    # Calculates the precision for the specified class index in the confusion
+    # matrix
+    def calculatePrecisionForClass(self, classIndex):
+        truePositives = self.confusionMatrix[classIndex][classIndex]
+        falsePositives = 0
+        for col in range(len(self.confusionMatrix)):
+            if col == classIndex: continue
+            falsePositives += self.confusionMatrix[classIndex][col]
+        if truePositives + falsePositives == 0:
+            return 0
+        precision = truePositives / (truePositives + falsePositives)
+        return precision
+
+    # Based on formulas in the ICML 2004 Notes on classification performance
+    # metrics: http://people.cs.bris.ac.uk/~flach/ICML04tutorial/
+    # Calculates recall as calculated by TP_avg / (FN_avg + TP_avg)
+    def calculateRecall(self):
+        sumOfRecalls = 0
+        for classIndex in range(self.numLabels):
+            sumOfRecalls += self.calculateRecallForClass(classIndex)
+        avgRecall = sumOfRecalls / self.numLabels
+        return avgRecall
+
+    # Calculates the recall for the specified class index in the confusion
+    # matrix
+    def calculateRecallForClass(self, classIndex):
+        truePositives = self.confusionMatrix[classIndex][classIndex]
+        falseNegatives = 0
+        for row in range(len(self.confusionMatrix)):
+            if row == classIndex: continue
+            falseNegatives += self.confusionMatrix[row][classIndex]
+        if truePositives + falseNegatives == 0:
+            return 0
+        recall = truePositives / (truePositives + falseNegatives)
+        return recall
+
+    # Based on formulas in the ICML 2004 Notes on classification performance
+    # metrics: http://people.cs.bris.ac.uk/~flach/ICML04tutorial/ 
+    # Calculates F1 score based on 2 * PRECISION * RECALL / (PRECISION + RECALL)
+    def calculateF1(self):
+        return 2 * self.precision * self.recall / (self.precision + self.recall)
+        
+    def redrawAll(self, canvas):
+        matrixHeight = matrixWidth = self.app.height / 2
+        topX, topY = self.app.width / 7, self.app.height / 5
+        self.drawConfusionMatrix(canvas, topX, topY,
+                                 matrixWidth, matrixHeight)
+        topX, topY = self.app.width / 2, self.app.height / 3
+        self.drawPerformanceMeasures(canvas, topX, topY)
+        self.mainPanel.drawPanelVertical(canvas)
+
 class NeuralNetworkApp(ModalApp):
     ACTIVATION_FUNCTION_NAMES = ["Logistic", "TanH"]
     ACTIVATION_FUNCTIONS = {"Logistic" : logistic, "TanH" : tanH}
     NODE_RADIUS_RATIO = 1/40
-    # Copied from:
-    # https://www.cs.cmu.edu/~112/notes/notes-graphics-part2.html#customColors
-    @staticmethod
-    def rgbString(red, green, blue):
-        return "#%02x%02x%02x" % (red, green, blue)
 
     # Starts the Neural Network App
     def appStarted(self):
@@ -542,12 +834,20 @@ class NeuralNetworkApp(ModalApp):
         self.defaultParameters = {'dims' : (4, 5, 5, 2),
                                   'activation' : self.activationFunctionIndex,
                                   'dataset' : self.datasetIndex}
-        self.network = NeuralNetwork([4, 5, 5, 2], logistic)
-        self.updateNetworkViewModel()
+        self.initNetwork()
+        self.startMode = StartMode()
         self.configMode = ConfigMode()
         self.trainMode = TrainMode()
+        self.testMode = TestMode()
         self.infoMode = InfoMode()
-        self.setActiveMode(self.configMode)
+        self.setActiveMode(self.startMode)
+    
+    def initNetwork(self):
+        dims = self.defaultParameters['dims']
+        funcName = self.ACTIVATION_FUNCTION_NAMES[self.defaultParameters['activation']]
+        func = self.ACTIVATION_FUNCTIONS[funcName]
+        self.network = NeuralNetwork(dims, func)
+        self.updateNetworkViewModel()
     
     # Takes variable arguments, updates dimensions, activation, and/or dataset
     def updateNetworkConfiguration(self, **kwargs):
@@ -576,15 +876,16 @@ class NeuralNetworkApp(ModalApp):
             scaledWeight = int(math.e**(abs(weight)+2)+1)
         weightMappedToChannel = (255 - getInBounds(scaledWeight, 0, 255))
         if weight < 0:
-            return NeuralNetworkApp.rgbString(weightMappedToChannel, 50, 255)
-        return NeuralNetworkApp.rgbString(255, 50, weightMappedToChannel)
+            return rgbString(weightMappedToChannel, 50, 255)
+        return rgbString(255, 50, weightMappedToChannel)
 
     # Draws current dataset and activation function name
     def drawConfigInfo(self, canvas):
-        
         s = f'Dataset: {self.data}\n'
-        activationFuncName = self.ACTIVATION_FUNCTION_NAMES[self.activationFunctionIndex]
-        s += f'Activation Function: {activationFuncName}'
+        # Special attribute __name__ used as described in Python 3 docs:
+        # https://docs.python.org/3/library/stdtypes.html#special-attributes
+        funcName = self.network.activation.__name__
+        s += f'Activation Function: {funcName}'
         canvas.create_text(self.width - self.margin, self.height - self.margin,
                             anchor = "se",
                             text = s)
@@ -676,7 +977,6 @@ class NeuralNetworkApp(ModalApp):
     
     def regenerateNetworkViewBounds(self):
         coords = self.nodeCoordinates
-        # Nested list comprehension
         x = [point[0] for layer in coords for point in layer]
         y = [point[1] for layer in coords for point in layer]
         ax1, ax2 = min(x) - self.r, max(x) + self.r

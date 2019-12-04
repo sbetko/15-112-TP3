@@ -22,6 +22,7 @@ class Dataset(object):
         self.path = path
         print(path)
         self.train = []
+        self.validation = []
         self.test = []
         self.labels = []
         self.features = []
@@ -85,9 +86,11 @@ class Dataset(object):
         
         self.numFeatures = len(self.allData[0][0])
         random.shuffle(self.allData)
-        split = int(len(self.allData)*self.TRAIN_SPLIT)
-        self.train = self.allData[:split]
-        self.test = self.allData[split:]
+        splitTrainAndVal = int(len(self.allData)*self.TRAIN_SPLIT)
+        splitValAndTest = splitTrainAndVal + int(len(self.allData)*self.VALIDATION_SPLIT)
+        self.train = self.allData[:splitTrainAndVal]
+        self.validation = self.allData[splitTrainAndVal:splitValAndTest]
+        self.test = self.allData[splitValAndTest:]
 
     # Builds one-hot vector for output label given a one-hot dictionary
     # One-hot is a vector encoding of fixed length with only one component

@@ -6,6 +6,9 @@ class NeuralNetwork(object):
     def __init__(self, dimensions, activation):
         self.dims = dimensions
         self.activation = activation
+        self.data = None # (yet) Set to data object used for training, on export
+        self.lossPerEpoch = None # (yet) Saved here on export
+        self.exportState = None
         self.cost = MSE
         self.initializeParameters()
         self.numLayers = len(dimensions)
