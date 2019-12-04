@@ -46,8 +46,16 @@ psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 
 class StartMode(Mode):
     def appStarted(self):
+        self.panels = []
         self.configureMainPanel()
+        self.app.allPanels.append(self.panels)
     
+    def mousePressed(self, event):
+        point = (event.x, event.y)
+        bounds = self.mainPanel.getBounds()
+        if pointInBounds(point, bounds):
+            self.mainPanel.mousePressed(point)
+
     def configureMainPanel(self):
         cx, cy = self.app.width/2, self.app.height/2
         width, height = self.app.width/5, self.app.height/3
@@ -60,10 +68,10 @@ class StartMode(Mode):
         self.mainPanel.addButton(configModeButton)
         self.mainPanel.addButton(aboutModeButton)
         self.mainPanel.addButton(importModelButton)
+        self.panels.append(self.mainPanel)
 
     def switchToConfigMode(self):
         self.app.initNetwork()
-
         self.app.setActiveMode(self.app.configMode)
     
     def switchToAboutMode(self):
@@ -88,12 +96,6 @@ class StartMode(Mode):
         self.app.network = myNetwork
         self.app.updateNetworkViewModel()
         self.app.setActiveMode(self.app.trainMode)
-
-    def mousePressed(self, event):
-        point = (event.x, event.y)
-        bounds = self.mainPanel.getBounds()
-        if pointInBounds(point, bounds):
-            self.mainPanel.mousePressed(point)
     
     def redrawAll(self, canvas):
         title = "Build Your Own Neural Network"
@@ -114,6 +116,7 @@ class InfoMode(Mode):
                            text = "Build-Your-Own Multi-Layer-Perceptron",
                            font = "Helvetica 20")
 
+# TODO: Add buttons to this mode
 class ConfigMode(Mode):
     def appStarted(self):
         self.warningMessages = dict()
@@ -221,10 +224,16 @@ class TrainMode(Mode):
     LOSS_GRAPH_COLOR = "Blue"
     LOSS_GRAPH_ROWS = 5
     LOSS_GRAPH_COLS = 5
+    
+    COLOR_SCHEME_PRESETS = [("255050000", "000050255"),
+                            ("255050000", "000255000"),
+                            ("000000255", "000255000")]
 
     def appStarted(self):
         self.mouse = (0,0)
+        self.initializePanels()
         self.timerDelay = 100
+        self.colorSchemeIndex = 0
         # You may click on neurons to toggle on or off visualizing their outputs
         # You may hover over a neuron to see the specific values associated with
         # it
@@ -235,12 +244,88 @@ class TrainMode(Mode):
         self.isTraining = False
         self.manualStep = 1
         self.autoStep = 50
-        self.showHelp = True
+        self.showHelp = False
         self.currentLoss = 0
         if self.app.network.exportState != None:
             self.loadTrainState()
         else:
             self.initializeLossGraph()
+
+    def initializePanels(self):
+        self.panels = []
+        self.initializeBackPanel()
+        self.initializeControlPanel()
+        self.initializeStartPanel()
+        self.initializeNextPanel()
+        self.app.allPanels.append(self.panels)
+    
+    def initializeBackPanel(self):
+        width = self.app.width / 10
+        height = self.app.height / 30
+        backPanel = Panel(self.app.margin, self.app.margin, width, height,
+                          anchor = "nw")
+        backButton = Button(self.goBack, "<- Configuration")
+        backPanel.addButton(backButton)
+        self.panels.append(backPanel)
+    
+    def initializeControlPanel(self):
+        width = self.app.width / 7
+        height = self.app.height / 5
+        controlPanel = Panel(self.app.margin, self.app.height/2.2, width, height,
+                             anchor = "nw")
+        learningRateButton = Button(self.setLearningRate, "Set learning rate")
+        resetButton = Button(self.reset, "Reset")
+        hoverVizTitle = "Change visualization mode\n(Hint: click the neurons)"
+        hoverVizButton = Button(self.toggleHoveringMode, hoverVizTitle)
+        colorButton = Button(self.changeColorScheme, "Change color scheme")
+        controlPanel.addButton(learningRateButton)
+        controlPanel.addButton(resetButton)
+        controlPanel.addButton(hoverVizButton)
+        controlPanel.addButton(colorButton)
+        self.panels.append(controlPanel)
+    
+    def initializeStartPanel(self):
+        width = self.app.width / 10
+        height = self.app.height / 20
+        startPanel = Panel(self.app.width/2, self.app.height - self.app.margin,
+                           width, height)
+        title = "Start Training"
+        startStopButton = Button(self.toggleTraining, title)
+        startStopButton.isToggleButton = True
+        startStopButton.activeText = "Pause Training"
+        startPanel.addButton(startStopButton)
+        self.panels.append(startPanel) 
+
+    def initializeNextPanel(self):
+        width = self.app.width / 30
+        height = self.app.height / 40
+        nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
+                          width, height, anchor = "ne")
+        nextButton = Button(self.goNext, "Test ->")
+        nextPanel.addButton(nextButton)
+        self.panels.append(nextPanel)
+
+    def goBack(self):
+        self.switchToConfigMode()
+    
+    def goNext(self):
+        self.isTraining = False
+        self.app.setActiveMode(self.app.testMode)
+    
+    def setLearningRate(self):
+        s = "Enter a number between 0 and 10"
+        learningRate = getInBounds(float(self.app.getUserInput(s)), 0, 10)
+        self.app.alpha = learningRate
+
+    def reset(self):
+        self.restartTraining()
+
+    def changeColorScheme(self):
+        self.colorSchemeIndex = ((self.colorSchemeIndex + 1)
+                                 % len(self.COLOR_SCHEME_PRESETS))
+    
+    def toggleTraining(self):
+        self.isTraining = False if self.isTraining else True
 
     def loadTrainState(self):
         state = self.app.network.exportState
@@ -258,7 +343,7 @@ class TrainMode(Mode):
         if event.key == "Right":
             self.doTraining(self.manualStep)
         elif event.key == "Space":
-            self.isTraining = False if self.isTraining else True
+            self.panels[2].buttons[0].activate()
         elif event.key == "r":
             self.restartTraining()
         elif event.key == "Up":
@@ -276,11 +361,17 @@ class TrainMode(Mode):
         elif event.key == "b":
             self.app.debug = False if self.app.debug else True
         elif event.key == "Enter":
-            self.isTraining = False
-            self.app.setActiveMode(self.app.testMode)
+            self.goNext()
     
     def mousePressed(self, event):
         r = self.app.r
+        point = (event.x, event.y)
+        for panel in self.panels:
+            bounds = panel.getBounds()
+            if pointInBounds(point, bounds):
+                panel.mousePressed(point)
+                return
+
         for node in self.app.nodeCoordinatesSet:                
             if pointInCircle(r, node, (event.x, event.y)):
                 if node in self.selectedNodeCoords and self.isVisualizing:
@@ -406,16 +497,6 @@ class TrainMode(Mode):
         print(f'{numCorrect}/{len(self.app.data.validation)}')
         self.calculateLoss()
 
-    # TODO: transfer this to graphics lib
-    # Maps a percentage of the color legend (0.00 - 1.00) to the color at that
-    # relative point along the legend
-    def mapPercentToLegendColor(self, percent):
-        percent *= 2
-        if 0 <= percent < 1:
-            return rgbString(255, 50, int(percent*255))
-        else:
-            return rgbString(int((2 - percent)*255), 50, 255)
-
     # Draw axes and associated values for loss graph
     def drawLossGraphGrid(self, canvas, h, w, tY, bY, rX, lX):
         # Left Axis Title and end-point values
@@ -457,7 +538,7 @@ class TrainMode(Mode):
 
     def drawHoverTooltip(self, canvas):
         w = self.app.height // 4
-        tY = self.app.margin + self.app.height // 3 # just below loss graph
+        tY = self.app.margin + self.app.height // 2 # just below loss graph
         lX = self.app.width - self.app.margin*2  
         
         if self.hoveredNode == None:
@@ -523,8 +604,8 @@ class TrainMode(Mode):
     # Draws loss graph in top left
     def drawLossGraph(self, canvas):
         h = w = self.app.height // 4            # height, width
-        tY = self.app.margin                    # top Y
-        bY = self.app.margin + h                # bottom Y
+        tY = self.app.margin * 3              # top Y
+        bY = self.app.margin * 3 + h                # bottom Y
         rX = self.app.width - self.app.margin   # right X
         lX = rX - w                             # left X
 
@@ -554,21 +635,16 @@ class TrainMode(Mode):
         legendBottomY = self.app.height - self.app.margin
         legendRightX = self.app.margin + legendWidth
         legendLeftX = self.app.margin
-        # TODO: insert drawColorGradientVertical(canvas, x, y, width, height, rgb1, rgb2)
-        canvas.create_rectangle(legendLeftX, legendTopY,
-                                legendRightX, legendBottomY)
-        numPixels = legendBottomY - legendTopY
-        for px in range(numPixels):
-            percent = px / numPixels
-            canvas.create_line(legendLeftX, legendTopY + px, legendRightX, legendTopY + px,
-                                fill = self.mapPercentToLegendColor(percent))
-        ########
+        rgb1, rgb2 = self.COLOR_SCHEME_PRESETS[self.colorSchemeIndex]
+        drawColorGradientVertical(canvas, legendLeftX, legendTopY,
+                                  legendWidth, legendHeight, rgb1, rgb2)
         canvas.create_text(legendRightX, legendTopY, text = " +", anchor = "w")
-        canvas.create_text(legendRightX, legendTopY + numPixels/2, text = " 0", anchor = "w")
+        canvas.create_text(legendRightX, legendTopY + legendHeight/2, text = " 0", anchor = "w")
         canvas.create_text(legendRightX, legendBottomY, text = " -", anchor = "w")
 
     def redrawAll(self, canvas):
-        self.app.drawNetwork(canvas)
+        rgb1, rgb2 = self.COLOR_SCHEME_PRESETS[self.colorSchemeIndex]
+        self.app.drawNetwork(canvas, rgb1 = rgb1, rgb2 = rgb2)
         canvas.create_text(self.app.width // 2, 50,
                            text = f'Iteration: {self.app.network.numTrainingIterations}')
 
@@ -581,30 +657,32 @@ class TrainMode(Mode):
             +f'Accuracy on validation set: {accuracyString}\n\n')
 
         if self.showHelp:
-            s += ('Press h to hide help.\n\n'
+            s += ('Press h to hide keyboard shortcuts.\n\n'
                 +'Press space to start or pause training.\n'
                 +f'Press the right arrow key to skip forward {self.manualStep} iterations\n'
                 +'Press r to reset weights and biases.\n'
                 +'Press up or down to increase or decrease the learning rate.\n'
+                +'Press enter to test the model.\n'
                 +'Press escape to go back to configuration mode.\n')
-            self.drawColorLegend(canvas)
         else:
-            s += 'Press h to show help.\n\n'
+            s += 'Press h to show keyboard shortcuts.\n\n'
 
-        canvas.create_text(self.app.margin, self.app.margin,
+        canvas.create_text(self.app.margin, self.app.margin*2,
                            text = s,
                            anchor = "nw")
 
-        if self.isTraining:
-            text = "Training..."
-        else:
-            text = "Training paused."
+        # if self.isTraining:
+        #     text = "Training..."
+        # else:
+        #     text = "Training paused."
 
-        canvas.create_text(self.app.width // 2, self.app.height - self.app.margin,
-                            text = text)
+        # canvas.create_text(self.app.width // 2, self.app.height - self.app.margin,
+        #                     text = text)
         self.drawLossGraph(canvas)
         self.drawHoverTooltip(canvas)
         self.app.drawConfigInfo(canvas)
+        self.drawColorLegend(canvas)
+        self.app.drawPanels(canvas, self.panels)
         canvas.create_oval(self.mouse[0]- 5, self.mouse[1] - 5,
                            self.mouse[0]+ 5, self.mouse[1] + 5)
 
@@ -824,14 +902,17 @@ class NeuralNetworkApp(ModalApp):
 
     # Starts the Neural Network App
     def appStarted(self):
+        self.oldWidth = self.width
+        self.oldHeight = self.height
         self.debug = False
         self.margin = 50
         self.datasetIndex = 0
         self.activationFunctionIndex = 0
+        self.allPanels = []
         self.datasets = self.findAllDatasetsInDirectory()
         self.data = self.datasets[0]
         self.alpha = 1
-        self.defaultParameters = {'dims' : (4, 5, 5, 2),
+        self.defaultParameters = {'dims' : [4, 5, 5, 2],
                                   'activation' : self.activationFunctionIndex,
                                   'dataset' : self.datasetIndex}
         self.initNetwork()
@@ -843,7 +924,7 @@ class NeuralNetworkApp(ModalApp):
         self.setActiveMode(self.startMode)
     
     def initNetwork(self):
-        dims = self.defaultParameters['dims']
+        dims = copy.copy(self.defaultParameters['dims'])
         funcName = self.ACTIVATION_FUNCTION_NAMES[self.defaultParameters['activation']]
         func = self.ACTIVATION_FUNCTIONS[funcName]
         self.network = NeuralNetwork(dims, func)
@@ -869,8 +950,10 @@ class NeuralNetworkApp(ModalApp):
             datasetList.append(newDataset)
         return datasetList
 
+    # TODO: Normalize the weight between 0 and 1 and return
+    #       mapPercentToLegendColor(%, rgb1, rgb2)
     # Converts parameter to a color and returns RGB value
-    def weightToColor(self, weight, biasTerm = False):
+    def weightToColor(self, weight, rgb1, rgb2, biasTerm = False):
         scaledWeight = int(math.e**(abs(weight)+2)+1)
         if biasTerm:
             scaledWeight = int(math.e**(abs(weight)+2)+1)
@@ -892,8 +975,18 @@ class NeuralNetworkApp(ModalApp):
 
     # Refresh network view model on window resize with updateNetworkViewModel()
     def sizeChanged(self):
+        self.updateAllPanelViewModels()
         self.updateNetworkViewModel()
+        self.oldWidth = self.width
+        self.oldHeight = self.height
     
+    # Updates the view models for panels in all modes
+    def updateAllPanelViewModels(self):
+        for panelsInMode in self.allPanels:
+            for panel in panelsInMode:
+                panel.sizeChanged(self.width, self.height,
+                                   self.oldWidth, self.oldHeight)
+        
     # Recalculate node radius and network view coordinates
     def updateNetworkViewModel(self):
         self.r = min(self.width*self.NODE_RADIUS_RATIO,
@@ -903,7 +996,8 @@ class NeuralNetworkApp(ModalApp):
         self.nodeCoordinatesSet = set(flatten2dList(self.nodeCoordinates))
 
     # Draws the bias for a specified layer and node
-    def drawBias(self, canvas, l, n, coords, r, visualizeParams, visualizeMe):
+    def drawBias(self, canvas, l, n, coords, r, visualizeParams, visualizeMe,
+                 rgb1, rgb2):
         # First layer has no bias term.
         if l == 0 or not visualizeMe:
             biMagnitude = 1
@@ -914,21 +1008,22 @@ class NeuralNetworkApp(ModalApp):
         else:
             bi = self.network.b[l-1][n][0]
             biMagnitude = abs(bi)
-            bColor = self.weightToColor(bi, biasTerm = True)
+            bColor = self.weightToColor(bi, rgb1, rgb2, biasTerm = True)
         cx, cy = coords[l][n]
         canvas.create_oval(cx-r, cy-r, cx+r, cy+r, width = biMagnitude,
                            fill = bColor)
         
     # Draws the weights for a specified layer and node
     # visualizeMe takes precedence over visualizeParams
-    def drawWeights(self, canvas, l, n, coords, r, visualizeParams, visualizeMe, doStipple):
+    def drawWeights(self, canvas, l, n, coords, r, visualizeParams, visualizeMe,
+                   doStipple, rgb1, rgb2):
         cx, cy = coords[l][n]
         if l == len(self.network.dims) - 1:
             return
         for n2 in range(len(coords[l+1])):
             if visualizeMe:
                 wij = self.network.w[l][n2][n]
-                wColor = self.weightToColor(wij)
+                wColor = self.weightToColor(wij, rgb1, rgb2)
                 wijMagnitude = abs(wij)
                 stipple = ''
             else:
@@ -941,7 +1036,8 @@ class NeuralNetworkApp(ModalApp):
                                 fill = wColor, stipple = stipple)
     
     # Draws the network onto the canvas, parameter visualization optional
-    def drawNetwork(self, canvas, visualizeParams = True, doStipple = True):
+    def drawNetwork(self, canvas, visualizeParams = True, doStipple = True,
+                    rgb1 = "255255255", rgb2 = "255255255"):
         r = self.r  # Node radius
         coords = self.nodeCoordinates
         for l in range(len(coords)):
@@ -952,11 +1048,11 @@ class NeuralNetworkApp(ModalApp):
                 else:
                     visualizeMe = False
                 self.drawBias(canvas, l, n, coords, r,
-                                visualizeParams, visualizeMe)
+                                visualizeParams, visualizeMe, rgb1, rgb2)
 
                 cx, cy = coords[l][n]
                 self.drawWeights(canvas, l, n, coords, r, visualizeParams,
-                                 visualizeMe, doStipple)
+                                 visualizeMe, doStipple, rgb1, rgb2)
 
     def regenerateNodeCoordinates(self):
         nodes = []
@@ -982,6 +1078,10 @@ class NeuralNetworkApp(ModalApp):
         ax1, ax2 = min(x) - self.r, max(x) + self.r
         ay1, ay2 = min(y) - self.r, max(y) + self.r
         self.networkViewBounds = (ax1, ay1, ax2, ay2)
+    
+    def drawPanels(self, canvas, panels):
+        for panel in panels:
+            panel.drawPanelVertical(canvas)
 
 if __name__ == "__main__":
     NeuralNetworkApp(width = 1700, height = 900)
