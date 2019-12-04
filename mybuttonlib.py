@@ -23,7 +23,7 @@ class Panel(object):
         self.width = width
         self.height = height
         self.buttons = []
-        self.backgroundColor = None
+        self.backgroundColor = "lightgray"
         self.buttonBounds = []
         self.anchor = anchor
 

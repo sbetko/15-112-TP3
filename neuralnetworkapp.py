@@ -66,8 +66,8 @@ class StartMode(Mode):
         importModelButton = Button(self.importModel, "Import Model")
 
         self.mainPanel.addButton(configModeButton)
-        self.mainPanel.addButton(aboutModeButton)
         self.mainPanel.addButton(importModelButton)
+        self.mainPanel.addButton(aboutModeButton)
         self.panels.append(self.mainPanel)
 
     def switchToConfigMode(self):
@@ -100,7 +100,7 @@ class StartMode(Mode):
     def redrawAll(self, canvas):
         title = "Build Your Own Neural Network"
         titleFont = "Helvetica 26"
-        canvas.create_text(self.app.width/2, self.app.margin,
+        canvas.create_text(self.app.width/2, self.app.height / 10,
                            text = title, font = titleFont)
         self.mainPanel.drawPanelVertical(canvas)
 
@@ -116,10 +116,67 @@ class InfoMode(Mode):
                            text = "Build-Your-Own Multi-Layer-Perceptron",
                            font = "Helvetica 20")
 
-# TODO: Add buttons to this mode
 class ConfigMode(Mode):
     def appStarted(self):
+        self.configurePanels()
         self.warningMessages = dict()
+    
+    def configurePanels(self):
+        self.panels = []
+        self.configureBackPanel()
+        self.configureControlPanel()
+        self.configureNextPanel()
+        self.app.allPanels.append(self.panels)
+    
+    def configureBackPanel(self):
+        width = self.app.width / 10
+        height = self.app.height / 30
+        self.backPanel = Panel(self.app.margin, self.app.margin,
+                               width, height, anchor = "nw")
+        self.backButton = Button(self.goBack, "<- Main Menu")
+        self.backPanel.addButton(self.backButton)
+        self.panels.append(self.backPanel)
+
+    def configureControlPanel(self):
+        width = self.app.width / 5
+        height = self.app.height / 10
+        self.controlPanel = Panel(self.app.margin,
+                                  self.app.height - self.app.margin,
+                                  width, height, anchor = "sw")
+        resetTitle = "Default configuration"
+        self.resetButton = Button(self.switchToDefaultParams, resetTitle)
+        datasetTitle = "Change dataset"
+        self.datasetButton = Button(self.switchDataset, datasetTitle)
+        activationTitle = "Change activation function"
+        self.activationButton = Button(self.switchActivationFunction,
+                                         activationTitle)
+        self.controlPanel.addButton(self.datasetButton)
+        self.controlPanel.addButton(self.activationButton)
+        self.controlPanel.addButton(self.resetButton)
+        self.panels.append(self.controlPanel)
+
+    def configureNextPanel(self):
+        width = self.app.width / 10
+        height = self.app.height / 30
+        self.nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
+                               width, height, anchor = "ne")
+        self.nextButton = Button(self.goNext, "Train ->")
+        self.nextPanel.addButton(self.nextButton)
+        self.panels.append(self.nextPanel)
+    
+    def goBack(self):
+        self.app.setActiveMode(self.app.startMode)
+    
+    def goNext(self):
+        self.switchToTrainMode()
+    
+    def mousePressed(self, event):
+        point = (event.x, event.y)
+        for panel in self.panels:
+            bounds = panel.getBounds()
+            if pointInBounds(point, bounds):
+                panel.mousePressed(point)
+                return
 
     def keyPressed(self, event):
         newDims = None
@@ -145,13 +202,10 @@ class ConfigMode(Mode):
             self.switchDataset()
         elif event.key == "a":
             self.switchActivationFunction()
-        elif event.key == "/" or event.key == "?":
-            self.app.setActiveMode(self.app.infoMode)
         elif event.key == "r":
             self.switchToDefaultParams()
         elif event.key == "Escape":
-            self.app.setActiveMode(self.app.startMode)
-
+            self.goBack()
         if newDims != None:
             self.app.network.resize(newDims)
             self.app.updateNetworkViewModel()
@@ -213,21 +267,21 @@ class ConfigMode(Mode):
 
         for message in self.warningMessages.values():
             s += "\n" + message
-        canvas.create_text(self.app.margin, self.app.margin,
+        canvas.create_text(self.app.margin, self.app.margin*2,
                            text = s,
                            anchor = "nw")
 
         self.app.drawConfigInfo(canvas)
+        self.app.drawPanels(canvas, self.panels)
 
 class TrainMode(Mode):
     LOSS_GRAPH_X_MIN = 20
     LOSS_GRAPH_COLOR = "Blue"
     LOSS_GRAPH_ROWS = 5
-    LOSS_GRAPH_COLS = 5
-    
+    LOSS_GRAPH_COLS = 5    
     COLOR_SCHEME_PRESETS = [("255050000", "000050255"),
-                            ("255050000", "000255000"),
-                            ("000000255", "000255000")]
+                            ("255050050", "000255050"),
+                            ("050255000", "050000255")]
 
     def appStarted(self):
         self.mouse = (0,0)
@@ -262,48 +316,49 @@ class TrainMode(Mode):
     def initializeBackPanel(self):
         width = self.app.width / 10
         height = self.app.height / 30
-        backPanel = Panel(self.app.margin, self.app.margin, width, height,
+        self.backPanel = Panel(self.app.margin, self.app.margin, width, height,
                           anchor = "nw")
-        backButton = Button(self.goBack, "<- Configuration")
-        backPanel.addButton(backButton)
-        self.panels.append(backPanel)
+        self.backButton = Button(self.goBack, "<- Configuration")
+        self.backPanel.addButton(self.backButton)
+        self.panels.append(self.backPanel)
     
     def initializeControlPanel(self):
         width = self.app.width / 7
         height = self.app.height / 5
-        controlPanel = Panel(self.app.margin, self.app.height/2.2, width, height,
+        self.controlPanel = Panel(self.app.margin, self.app.height/2.2, width, height,
                              anchor = "nw")
-        learningRateButton = Button(self.setLearningRate, "Set learning rate")
-        resetButton = Button(self.reset, "Reset")
+        self.learningRateButton = Button(self.setLearningRate, "Set learning rate")
+        self.resetButton = Button(self.reset, "Reset")
         hoverVizTitle = "Change visualization mode\n(Hint: click the neurons)"
-        hoverVizButton = Button(self.toggleHoveringMode, hoverVizTitle)
-        colorButton = Button(self.changeColorScheme, "Change color scheme")
-        controlPanel.addButton(learningRateButton)
-        controlPanel.addButton(resetButton)
-        controlPanel.addButton(hoverVizButton)
-        controlPanel.addButton(colorButton)
-        self.panels.append(controlPanel)
+        self.hoverVizButton = Button(self.toggleHoveringMode, hoverVizTitle)
+        self.colorButton = Button(self.changeColorScheme, "Change color scheme")
+        self.controlPanel.addButton(self.learningRateButton)
+        self.controlPanel.addButton(self.resetButton)
+        self.controlPanel.addButton(self.hoverVizButton)
+        self.controlPanel.addButton(self.colorButton)
+        self.panels.append(self.controlPanel)
     
     def initializeStartPanel(self):
         width = self.app.width / 10
         height = self.app.height / 20
-        startPanel = Panel(self.app.width/2, self.app.height - self.app.margin,
+        self.startPanel = Panel(self.app.width/2, self.app.height - self.app.margin,
                            width, height)
+        self.startPanel.backgroundColor = "lightgray"
         title = "Start Training"
-        startStopButton = Button(self.toggleTraining, title)
-        startStopButton.isToggleButton = True
-        startStopButton.activeText = "Pause Training"
-        startPanel.addButton(startStopButton)
-        self.panels.append(startPanel) 
+        self.startStopButton = Button(self.toggleTraining, title, )
+        self.startStopButton.isToggleButton = True
+        self.startStopButton.activeText = "Pause Training"
+        self.startPanel.addButton(self.startStopButton)
+        self.panels.append(self.startPanel)
 
     def initializeNextPanel(self):
         width = self.app.width / 30
         height = self.app.height / 40
-        nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
+        self.nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
                           width, height, anchor = "ne")
-        nextButton = Button(self.goNext, "Test ->")
-        nextPanel.addButton(nextButton)
-        self.panels.append(nextPanel)
+        self.nextButton = Button(self.goNext, "Test ->")
+        self.nextPanel.addButton(self.nextButton)
+        self.panels.append(self.nextPanel)
 
     def goBack(self):
         self.switchToConfigMode()
@@ -318,6 +373,7 @@ class TrainMode(Mode):
         self.app.alpha = learningRate
 
     def reset(self):
+        self.colorSchemeIndex = 0
         self.restartTraining()
 
     def changeColorScheme(self):
@@ -343,7 +399,7 @@ class TrainMode(Mode):
         if event.key == "Right":
             self.doTraining(self.manualStep)
         elif event.key == "Space":
-            self.panels[2].buttons[0].activate()
+            self.startStopButton.activate()
         elif event.key == "r":
             self.restartTraining()
         elif event.key == "Up":
@@ -353,15 +409,12 @@ class TrainMode(Mode):
                 self.app.alpha -= 0.5
         elif event.key == "t":
             self.toggleHoveringMode()
-            #self.toggleVisualization()
         elif event.key == "Escape":
-            self.switchToConfigMode()
+            self.backButton.activate()
         elif event.key == "h":
             self.showHelp = False if self.showHelp else True
-        elif event.key == "b":
-            self.app.debug = False if self.app.debug else True
         elif event.key == "Enter":
-            self.goNext()
+            self.nextButton.activate()
     
     def mousePressed(self, event):
         r = self.app.r
@@ -638,9 +691,11 @@ class TrainMode(Mode):
         rgb1, rgb2 = self.COLOR_SCHEME_PRESETS[self.colorSchemeIndex]
         drawColorGradientVertical(canvas, legendLeftX, legendTopY,
                                   legendWidth, legendHeight, rgb1, rgb2)
-        canvas.create_text(legendRightX, legendTopY, text = " +", anchor = "w")
+        top = " " + str(self.app.COLORIZATION_BOUND) + " (+)"
+        bot = " " + str(-self.app.COLORIZATION_BOUND) + " (-)"
+        canvas.create_text(legendRightX, legendTopY, text = top, anchor = "w")
         canvas.create_text(legendRightX, legendTopY + legendHeight/2, text = " 0", anchor = "w")
-        canvas.create_text(legendRightX, legendBottomY, text = " -", anchor = "w")
+        canvas.create_text(legendRightX, legendBottomY, text = bot, anchor = "w")
 
     def redrawAll(self, canvas):
         rgb1, rgb2 = self.COLOR_SCHEME_PRESETS[self.colorSchemeIndex]
@@ -661,6 +716,7 @@ class TrainMode(Mode):
                 +'Press space to start or pause training.\n'
                 +f'Press the right arrow key to skip forward {self.manualStep} iterations\n'
                 +'Press r to reset weights and biases.\n'
+                +'Press t to change visualization mode.\n'
                 +'Press up or down to increase or decrease the learning rate.\n'
                 +'Press enter to test the model.\n'
                 +'Press escape to go back to configuration mode.\n')
@@ -683,8 +739,6 @@ class TrainMode(Mode):
         self.app.drawConfigInfo(canvas)
         self.drawColorLegend(canvas)
         self.app.drawPanels(canvas, self.panels)
-        canvas.create_oval(self.mouse[0]- 5, self.mouse[1] - 5,
-                           self.mouse[0]+ 5, self.mouse[1] + 5)
 
 class TestMode(Mode):
     RGB1 = "247251255"
@@ -899,6 +953,7 @@ class NeuralNetworkApp(ModalApp):
     ACTIVATION_FUNCTION_NAMES = ["Logistic", "TanH"]
     ACTIVATION_FUNCTIONS = {"Logistic" : logistic, "TanH" : tanH}
     NODE_RADIUS_RATIO = 1/40
+    COLORIZATION_BOUND = 3
 
     # Starts the Neural Network App
     def appStarted(self):
@@ -940,6 +995,7 @@ class NeuralNetworkApp(ModalApp):
         activation = self.ACTIVATION_FUNCTIONS[activationFuncName]
         self.network = NeuralNetwork(dims, activation)
         self.datasetIndex = kwargs.get('dataset', self.datasetIndex)
+        self.updateNetworkViewModel()
 
     # Finds all CSV files in the working directory
     def findAllDatasetsInDirectory(self):
@@ -950,17 +1006,16 @@ class NeuralNetworkApp(ModalApp):
             datasetList.append(newDataset)
         return datasetList
 
-    # TODO: Normalize the weight between 0 and 1 and return
-    #       mapPercentToLegendColor(%, rgb1, rgb2)
-    # Converts parameter to a color and returns RGB value
+    # Normalizes the weight between 0 and 1 and returns
+    # mapPercentToLegendColor(%, rgb1, rgb2) i.e., converts parameter to 
+    # a color and returns RGB value
     def weightToColor(self, weight, rgb1, rgb2, biasTerm = False):
-        scaledWeight = int(math.e**(abs(weight)+2)+1)
-        if biasTerm:
-            scaledWeight = int(math.e**(abs(weight)+2)+1)
-        weightMappedToChannel = (255 - getInBounds(scaledWeight, 0, 255))
-        if weight < 0:
-            return rgbString(weightMappedToChannel, 50, 255)
-        return rgbString(255, 50, weightMappedToChannel)
+        maxWeight = self.COLORIZATION_BOUND
+        minWeight = -maxWeight
+        weightRange = 2*maxWeight
+        normalizedWeight = (weight + maxWeight) / weightRange
+        percent = getInBounds(normalizedWeight, 0, 1)
+        return mapPercentToLegendColor(percent, rgb1, rgb2)
 
     # Draws current dataset and activation function name
     def drawConfigInfo(self, canvas):
@@ -977,6 +1032,13 @@ class NeuralNetworkApp(ModalApp):
     def sizeChanged(self):
         self.updateAllPanelViewModels()
         self.updateNetworkViewModel()
+        # FIXME: For some reason, resizing the window affects the hover mode
+        #        in TrainMode, but this if statement undoes that change. Need to
+        #        find the cause of this bug though.
+        if self._activeMode == self.trainMode:
+            self.trainMode.toggleHoveringMode()
+            self.trainMode.toggleHoveringMode()
+
         self.oldWidth = self.width
         self.oldHeight = self.height
     
