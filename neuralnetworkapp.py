@@ -18,10 +18,6 @@ from mygraphicslib import *
 # For serializing the network
 import pickle
 
-# This is for performance purposes
-import psutil
-psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
-
 # Things To Do:
 # DONE: Add CSV read-support
 # DONE: Add a graph for the loss function with matplotlib
@@ -45,6 +41,7 @@ psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 # TODO: Speed up the matrix math a little bit
 
 class StartMode(Mode):
+    
     def appStarted(self):
         self.panels = []
         self.configureMainPanel()
@@ -123,19 +120,10 @@ class ConfigMode(Mode):
     
     def configurePanels(self):
         self.panels = []
-        self.configureBackPanel()
+        self.app.configureBackPanel("<- Main Menu", self)
         self.configureControlPanel()
-        self.configureNextPanel()
+        self.app.configureNextPanel("Train ->", self)
         self.app.allPanels.append(self.panels)
-    
-    def configureBackPanel(self):
-        width = self.app.width / 10
-        height = self.app.height / 30
-        self.backPanel = Panel(self.app.margin, self.app.margin,
-                               width, height, anchor = "nw")
-        self.backButton = Button(self.goBack, "<- Main Menu")
-        self.backPanel.addButton(self.backButton)
-        self.panels.append(self.backPanel)
 
     def configureControlPanel(self):
         width = self.app.width / 5
@@ -155,14 +143,6 @@ class ConfigMode(Mode):
         self.controlPanel.addButton(self.resetButton)
         self.panels.append(self.controlPanel)
 
-    def configureNextPanel(self):
-        width = self.app.width / 10
-        height = self.app.height / 30
-        self.nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
-                               width, height, anchor = "ne")
-        self.nextButton = Button(self.goNext, "Train ->")
-        self.nextPanel.addButton(self.nextButton)
-        self.panels.append(self.nextPanel)
     
     def goBack(self):
         self.app.setActiveMode(self.app.startMode)
@@ -278,14 +258,14 @@ class TrainMode(Mode):
     LOSS_GRAPH_X_MIN = 20
     LOSS_GRAPH_COLOR = "Blue"
     LOSS_GRAPH_ROWS = 5
-    LOSS_GRAPH_COLS = 5    
+    LOSS_GRAPH_COLS = 5
     COLOR_SCHEME_PRESETS = [("255050000", "000050255"),
                             ("255050050", "000255050"),
                             ("050255000", "050000255")]
 
     def appStarted(self):
         self.mouse = (0,0)
-        self.initializePanels()
+        self.configurePanels()
         self.timerDelay = 100
         self.colorSchemeIndex = 0
         # You may click on neurons to toggle on or off visualizing their outputs
@@ -305,24 +285,15 @@ class TrainMode(Mode):
         else:
             self.initializeLossGraph()
 
-    def initializePanels(self):
+    def configurePanels(self):
         self.panels = []
-        self.initializeBackPanel()
-        self.initializeControlPanel()
-        self.initializeStartPanel()
-        self.initializeNextPanel()
+        self.app.configureBackPanel("<- Configuration", self)
+        self.configureControlPanel()
+        self.configureStartPanel()
+        self.app.configureNextPanel("Test ->", self)
         self.app.allPanels.append(self.panels)
     
-    def initializeBackPanel(self):
-        width = self.app.width / 10
-        height = self.app.height / 30
-        self.backPanel = Panel(self.app.margin, self.app.margin, width, height,
-                          anchor = "nw")
-        self.backButton = Button(self.goBack, "<- Configuration")
-        self.backPanel.addButton(self.backButton)
-        self.panels.append(self.backPanel)
-    
-    def initializeControlPanel(self):
+    def configureControlPanel(self):
         width = self.app.width / 7
         height = self.app.height / 5
         self.controlPanel = Panel(self.app.margin, self.app.height/2.2, width, height,
@@ -338,7 +309,7 @@ class TrainMode(Mode):
         self.controlPanel.addButton(self.colorButton)
         self.panels.append(self.controlPanel)
     
-    def initializeStartPanel(self):
+    def configureStartPanel(self):
         width = self.app.width / 10
         height = self.app.height / 20
         self.startPanel = Panel(self.app.width/2, self.app.height - self.app.margin,
@@ -350,15 +321,6 @@ class TrainMode(Mode):
         self.startStopButton.activeText = "Pause Training"
         self.startPanel.addButton(self.startStopButton)
         self.panels.append(self.startPanel)
-
-    def initializeNextPanel(self):
-        width = self.app.width / 30
-        height = self.app.height / 40
-        self.nextPanel = Panel(self.app.width - self.app.margin, self.app.margin,
-                          width, height, anchor = "ne")
-        self.nextButton = Button(self.goNext, "Test ->")
-        self.nextPanel.addButton(self.nextButton)
-        self.panels.append(self.nextPanel)
 
     def goBack(self):
         self.switchToConfigMode()
@@ -403,7 +365,8 @@ class TrainMode(Mode):
         elif event.key == "r":
             self.restartTraining()
         elif event.key == "Up":
-            self.app.alpha += 0.5
+            if self.app.alpha < 10:
+                self.app.alpha += 0.5
         elif event.key == "Down":
             if self.app.alpha >= 0.5:
                 self.app.alpha -= 0.5
@@ -727,13 +690,6 @@ class TrainMode(Mode):
                            text = s,
                            anchor = "nw")
 
-        # if self.isTraining:
-        #     text = "Training..."
-        # else:
-        #     text = "Training paused."
-
-        # canvas.create_text(self.app.width // 2, self.app.height - self.app.margin,
-        #                     text = text)
         self.drawLossGraph(canvas)
         self.drawHoverTooltip(canvas)
         self.app.drawConfigInfo(canvas)
@@ -755,7 +711,13 @@ class TestMode(Mode):
         self.precisionFormatted = '%0.5f' % self.precision
         self.recallFormatted = '%0.5f' % self.recall 
         self.f1ScoreFormatted = '%0.5f' % self.f1Score
+        self.configurePanels()
+    
+    def configurePanels(self):
+        self.panels = []
         self.configureMainPanel()
+        self.app.configureBackPanel("<- Main Menu", self)
+        self.app.allPanels.append(self.panels)
     
     def configureMainPanel(self):
         x, y = self.app.width / 2, self.app.height / 2
@@ -763,10 +725,12 @@ class TestMode(Mode):
         height = self.app.height / 20
         self.mainPanel = Panel(x, y, width, height, anchor = "nw")
         self.mainPanel.backgroundColor = "lightgray"
-
         exportModelButton = Button(self.exportModel, "Export Model")
-        
         self.mainPanel.addButton(exportModelButton)
+        self.panels.append(self.mainPanel)
+    
+    def goBack(self):
+        self.app.setActiveMode(self.app.startMode)
     
     # I used the method described in the Python 3 docs to write to pickle an
     # object
@@ -793,9 +757,11 @@ class TestMode(Mode):
     # Called when the mouse is pressed, checks for button presses
     def mousePressed(self, event):
         point = (event.x, event.y)
-        bounds = self.mainPanel.getBounds()
-        if pointInBounds(point, bounds):
-            self.mainPanel.mousePressed(point)
+        for panel in self.panels:
+            bounds = panel.getBounds()
+            if pointInBounds(point, bounds):
+                panel.mousePressed(point)
+                return
     
     # Generates a 2d list of the confusion maatrix with rows representing
     # predicted class and columns representing the actual (true) class.
@@ -947,6 +913,7 @@ class TestMode(Mode):
                                  matrixWidth, matrixHeight)
         topX, topY = self.app.width / 2, self.app.height / 3
         self.drawPerformanceMeasures(canvas, topX, topY)
+        self.app.drawPanels(canvas, self.panels)
         self.mainPanel.drawPanelVertical(canvas)
 
 class NeuralNetworkApp(ModalApp):
@@ -1144,6 +1111,24 @@ class NeuralNetworkApp(ModalApp):
     def drawPanels(self, canvas, panels):
         for panel in panels:
             panel.drawPanelVertical(canvas)
+    
+    def configureNextPanel(self, name, mode):
+        width = self.width / 10
+        height = self.height / 30
+        mode.nextPanel = Panel(self.width - self.margin, self.margin,
+                          width, height, anchor = "ne")
+        mode.nextButton = Button(mode.goNext, "Test ->")
+        mode.nextPanel.addButton(mode.nextButton)
+        mode.panels.append(mode.nextPanel)
+    
+    def configureBackPanel(self, name, mode):
+        width = self.width / 10
+        height = self.height / 30
+        mode.backPanel = Panel(self.margin, self.margin, width, height,
+                          anchor = "nw")
+        mode.backButton = Button(mode.goBack, name)
+        mode.backPanel.addButton(mode.backButton)
+        mode.panels.append(mode.backPanel)
 
 if __name__ == "__main__":
     NeuralNetworkApp(width = 1700, height = 900)
