@@ -1,3 +1,7 @@
+# This file houses the program driver, the main app class
+# NeuralNetworkApp extending ModalApp, as well as all of its modes,
+# Start Mode, Configuration Mode, Training Mode, and Testing Mode.
+
 import math, random, copy, numbers, os
 
 # Taken from course site: https://www.cs.cmu.edu/~112/notes/cmu_112_graphics.py
@@ -15,38 +19,49 @@ from mybuttonlib import *
 from mygraphicslib import *
 
 # Taken from here https://docs.python.org/3/library/pickle.html
-# For serializing the network
+# For serialization/deserialization of the network
 import pickle
+
+# This is for performance purposes
+import psutil
+psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 
 # Things To Do:
 # DONE: Add CSV read-support
 # DONE: Add a graph for the loss function with matplotlib
+# DONE: Add mouse-hover to view parameter
+# DONE: Add validation set
+# DONE: Add a test mode
+# DONE: Add model import / export
+# DONE: Add a mouse-based GUI with TkInter
 # TODO: Implement Stochastic Gradient Descent
 #       - With variable batch size too
-# DONE Add mouse-hover to view parameter
-# DONE: Add validation set
-# DONE: Add a TEST MODE
-# DONE: Add model import / export
-# TODO: Add input/output ghost for config help
-# TODO: Add a training set generator with choice of simple and complex boolean
-#       rules, with the respective test set generator
+# TODO: Add a regularization parameter
 # TODO: Add a training set generator with choice of mathematical function on a
-#       chosen domain :) (with respective test set generator)
-# TODO: Add a graph for the decision boundary! (with points plotted)
-# TODO: Add a mouse-based GUI with TkInter
-# TODO: Add ability to view backpropagation process
-#       - Step, layer by layer, and view change to weight
+#       chosen domain (with respective test set generator)
 # TODO: Add support for regression
-# TODO: Add a plot of feature space? Only works for 2d, not really helpful
 # TODO: Speed up the matrix math a little bit
 
+# The first mode the user sees
 class StartMode(Mode):
-    
     def appStarted(self):
+        self.app.initDisplayPieceNetwork()
         self.panels = []
         self.configureMainPanel()
         self.app.allPanels.append(self.panels)
+        self.timer = 0
     
+    # Initializes the background
+    def modeActivated(self):
+        self.app.initDisplayPieceNetwork()
+    
+    # Makes a lightshow on the splash screen
+    def timerFired(self):
+        self.timer += self.app.timerDelay
+        if self.timer % 900 == 0:
+            self.app.network.initializeParameters()
+
+    # Checks if 
     def mousePressed(self, event):
         point = (event.x, event.y)
         bounds = self.mainPanel.getBounds()
@@ -99,6 +114,8 @@ class StartMode(Mode):
         titleFont = "Helvetica 26"
         canvas.create_text(self.app.width/2, self.app.height / 10,
                            text = title, font = titleFont)
+        self.app.drawNetwork(canvas, visualizeParams = True,
+                             rgb1 = "255050000", rgb2 = "000050255")
         self.mainPanel.drawPanelVertical(canvas)
 
 class InfoMode(Mode):
@@ -152,11 +169,7 @@ class ConfigMode(Mode):
     
     def mousePressed(self, event):
         point = (event.x, event.y)
-        for panel in self.panels:
-            bounds = panel.getBounds()
-            if pointInBounds(point, bounds):
-                panel.mousePressed(point)
-                return
+        self.app.doPanelPress(point, self.panels)
 
     def keyPressed(self, event):
         newDims = None
@@ -239,7 +252,7 @@ class ConfigMode(Mode):
         self.app.drawNetwork(canvas, visualizeParams = False, doStipple = False)
         s = ("Configuration Mode\n\n"
              "Press right and left arrow keys to add and remove layers.\n"
-             "Press up and down arrow keys to add and remove neurons.\n"
+             "Press up and down arrow keys to add and remove neurons.\n\n"
              "Press a to change activation function.\n"
              "Press tab to change datasets.\n"
              "Press r for default settings.\n"
@@ -331,8 +344,14 @@ class TrainMode(Mode):
     
     def setLearningRate(self):
         s = "Enter a number between 0 and 10"
-        learningRate = getInBounds(float(self.app.getUserInput(s)), 0, 10)
-        self.app.alpha = learningRate
+        userInput = self.app.getUserInput(s)
+        if userInput == None:
+            return
+        try:
+            learningRate = getInBounds(float(userInput), 0, 10)
+            self.app.alpha = learningRate
+        except:
+            self.app.showMessage("Not a valid number! Please try again.")
 
     def reset(self):
         self.colorSchemeIndex = 0
@@ -382,11 +401,8 @@ class TrainMode(Mode):
     def mousePressed(self, event):
         r = self.app.r
         point = (event.x, event.y)
-        for panel in self.panels:
-            bounds = panel.getBounds()
-            if pointInBounds(point, bounds):
-                panel.mousePressed(point)
-                return
+        if self.app.doPanelPress(point, self.panels):
+            return
 
         for node in self.app.nodeCoordinatesSet:                
             if pointInCircle(r, node, (event.x, event.y)):
@@ -451,6 +467,7 @@ class TrainMode(Mode):
     
     def restartTraining(self):
         self.isTraining = False
+        self.app.alpha = 1
         self.app.network.initializeParameters()
         self.initializeLossGraph()
     
@@ -945,6 +962,11 @@ class NeuralNetworkApp(ModalApp):
         self.infoMode = InfoMode()
         self.setActiveMode(self.startMode)
     
+    def initDisplayPieceNetwork(self):
+        dims = [4, 7, 6, 1, 1, 6, 7, 4]
+        self.network = NeuralNetwork(dims, None)
+        self.updateNetworkViewModel()
+
     def initNetwork(self):
         dims = copy.copy(self.defaultParameters['dims'])
         funcName = self.ACTIVATION_FUNCTION_NAMES[self.defaultParameters['activation']]
@@ -1067,14 +1089,15 @@ class NeuralNetworkApp(ModalApp):
     # Draws the network onto the canvas, parameter visualization optional
     def drawNetwork(self, canvas, visualizeParams = True, doStipple = True,
                     rgb1 = "255255255", rgb2 = "255255255"):
+        visualizeMe = True # default
         r = self.r  # Node radius
         coords = self.nodeCoordinates
         for l in range(len(coords)):
             for n in range(len(coords[l])):
-                if visualizeParams:
+                if visualizeParams and self._activeMode != self.startMode:
                     xy = coords[l][n]
                     visualizeMe = xy in self.trainMode.selectedNodeCoords
-                else:
+                elif self._activeMode != self.startMode:
                     visualizeMe = False
                 self.drawBias(canvas, l, n, coords, r,
                                 visualizeParams, visualizeMe, rgb1, rgb2)
@@ -1117,7 +1140,7 @@ class NeuralNetworkApp(ModalApp):
         height = self.height / 30
         mode.nextPanel = Panel(self.width - self.margin, self.margin,
                           width, height, anchor = "ne")
-        mode.nextButton = Button(mode.goNext, "Test ->")
+        mode.nextButton = Button(mode.goNext, name)
         mode.nextPanel.addButton(mode.nextButton)
         mode.panels.append(mode.nextPanel)
     
@@ -1129,6 +1152,14 @@ class NeuralNetworkApp(ModalApp):
         mode.backButton = Button(mode.goBack, name)
         mode.backPanel.addButton(mode.backButton)
         mode.panels.append(mode.backPanel)
+    
+    def doPanelPress(self, point, panels):
+        for panel in panels:
+            bounds = panel.getBounds()
+            if pointInBounds(point, bounds):
+                panel.mousePressed(point)
+                return True
+        return False
 
 if __name__ == "__main__":
     NeuralNetworkApp(width = 1700, height = 900)

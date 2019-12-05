@@ -1,5 +1,10 @@
+# This file houses the Button and Panel classes, the main user-interface
+# objects used by NeuralNetworkApp to make the canvas interactive
+# through the mouse.
+
 from mymathlib import *
 
+# Single button class
 class Button(object):
     def __init__(self, function, text, font = "Arial 10"):
         self.font = font
@@ -18,6 +23,8 @@ class Button(object):
     def assignBounds(self, bounds):
         self.bounds = bounds
 
+# The panel class, a container / geometry manager for buttons
+# with support for vertical panel drawing.
 class Panel(object):
     def __init__(self, x, y, width, height, anchor = ""):
         self.width = width

@@ -1,5 +1,7 @@
+# This file houses all of the required mathematical functions and
+# matrix/vector operations used in the NeuralNetworkApp.
+
 import math, random, copy, numbers
-from helpers112 import rgbString
 
 # with support for up to 2 dimensional lists
 def almostEqual(a, b):

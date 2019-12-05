@@ -1,13 +1,13 @@
+# This file houses the neural network class with an implementation of the
+# gradient descent and backpropagation algorithms.
 from mymathlib import *
 
-# Main neural network class with train and test functions
+# The main Neural Network class
 class NeuralNetwork(object):
     # Initialize network
     def __init__(self, dimensions, activation):
         self.dims = dimensions
         self.activation = activation
-        self.data = None # (yet) Set to data object used for training, on export
-        self.lossPerEpoch = None # (yet) Saved here on export
         self.exportState = None
         self.cost = MSE
         self.initializeParameters()
@@ -95,23 +95,17 @@ class NeuralNetwork(object):
                 count += 1
         return count
 
-    # Backpropagation and gradient descent algorithm implemented on routine described in
-    # Goodfellow, Ian, Yoshua Bengio, and Aaron Courville. Deep learning. MIT press, 2016.
-    # Specifically, Chapter 6 (Deep Feedforward Networks) section 5.4 on
+    # Backpropagation and gradient descent implemented as described in
+    # Goodfellow, Ian, Yoshua Bengio, and Aaron Courville. Deep learning. MIT
+    # press, 2016. Chapter 6 (Deep Feedforward Networks) section 5.4 on
     # Back-Propagation Computation in Fully Connected MLP (Multilayer Perceptron)
-    # and algorithms 6.3 (feedforward) for computing the activations of each layer
-    # and 6.4 (backward computation) for computing the gradients on those activations.
+    # and algorithms 6.3 (feedforward) for computing the activations of each
+    # layer and 6.4 (backward computation) for computing the gradients on those
+    # activations.
     def train(self, data, iterations, alpha):
         self.numTrainingIterations += iterations
-        if iterations < 0:
-            alpha = -alpha
-            iterations = abs(iterations)
-
         for iteration in range(iterations):
             random.shuffle(data)
-            if (self.numTrainingIterations + iteration) % 100 == 0:
-                print(f'Iteration {self.numTrainingIterations} training...', end = "")
-
             # Initialize matrices to hold weight and bias gradients
             weightGradient = []
             biasGradient = []
@@ -121,7 +115,7 @@ class NeuralNetwork(object):
             for layerBiasVec in self.b:
                 biasGradient.append(transpose([0]*len(layerBiasVec)))
 
-            # Backprop
+            # Backpropagation
             for x, y in data:
                 weightGradientChange = []
                 biasGradientChange = []
@@ -145,24 +139,25 @@ class NeuralNetwork(object):
                     zMat += [zb[:]]
                     aMat += [a[:]]
 
-                # 3. Compute error of output layer L and store for use in computer errors
-                #    of prior layers
+                # 3. Compute error of output layer L and store for computing
+                #   errors of prior layers
                 error = hadamardProd(self.cost(aMat[-1], y, order = 1),
-                                             self.activation(zMat[-1], order = 1)) 
+                                     self.activation(zMat[-1], order = 1)) 
                 biasGradientChange[-1] = error 
                 weightGradientChange[-1] = matProd(error,
-                                                           transpose(aMat[-2])) 
+                                                   transpose(aMat[-2])) 
 
-                # 4. Propagate backwards to compute errors of all layers L-1, L-2,..., 2
-                #    and keep record of these results with weightGradientChange
-                #    and biasGradientChange (accumulator variables for the error)
+                # 4. Propagate backwards to compute errors of all layers
+                #    L-1, L-2,..., 2 and keep record of these results with
+                #    weightGradientChange and biasGradientChange (accumulator
+                #    variables for the error)
                 for layer in range(2, self.numLayers):
                     z = zMat[-layer]
                     weightTimesError = matProd(transpose(self.w[-layer + 1]),
-                                                       error) 
+                                               error) 
                     derivativeOfActivationAtZ = self.activation(z, order = 1) 
                     error = hadamardProd(weightTimesError,
-                                                 derivativeOfActivationAtZ) 
+                                         derivativeOfActivationAtZ) 
                     biasGradientChange[-layer] = error
                     aT = transpose(aMat[-layer - 1])
                     weightGradientChange[-layer] = matProd(error, aT) 
@@ -171,13 +166,13 @@ class NeuralNetwork(object):
                 #    biasGradient and weightGradient
                 for layer in range(len(self.w)):
                     weightGradient[layer] = matrixSum(weightGradient[layer],
-                                                              weightGradientChange[layer])
+                                                    weightGradientChange[layer])
                     biasGradient[layer] = matrixSum(biasGradient[layer],
-                                                            biasGradientChange[layer])
+                                                    biasGradientChange[layer])
 
-            # 6. Update weights and biases of network by subtracting the averaged
-            #    partial derivatives of the cost function with respect to
-            #    the parameters for the training batch multiplied by the
+            # 6. Update weights and biases of network by subtracting the
+            #    averaged partial derivatives of the cost function with respect
+            #    to the parameters for the training batch multiplied by the
             #    learning rate.
             for layer in range(len(self.w)): 
                 dWeights = multiplyMatrixByScalar(-alpha/len(data),
@@ -187,17 +182,3 @@ class NeuralNetwork(object):
                 dBias = multiplyMatrixByScalar(-alpha/len(data),
                                                        biasGradient[layer])
                 self.b[layer] = addVectors(self.b[layer], dBias)
-            
-            if (self.numTrainingIterations + iteration) % 100 == 0:
-                print(f'tested with {self.test(data)} / {len(data)} correct.')
-    
-    # Returns a tuple with the maximum and minimum weight in the network
-    def getMaxMinWeight(self):
-        minWeight = 100
-        maxWeight = -100
-        for wMatrix in self.w:
-            for wVec in wMatrix:
-                for w in wVec:
-                    minWeight = w if w < minWeight else minWeight
-                    maxWeight = w if w > maxWeight else maxWeight
-        return (minWeight, maxWeight)

@@ -1,3 +1,6 @@
+# This file houses a couple helper graphics functions useful for
+# drawing smooth color gradients, used by NeuralNetworkApp
+
 from helpers112 import rgbString
 
 # Returns the color at the relative distance towards rgb2 from rgb1
@@ -12,6 +15,8 @@ def mapPercentToLegendColor(percent, rgb1, rgb2):
 
         return rgbString(r3, g3, b3)
 
+# Draws a color gradient going from top to bottom, (x, y) is top
+# left corner
 def drawColorGradientVertical(canvas, x, y, width, height, rgb1, rgb2):
     canvas.create_rectangle(x, y, x + width, y + height)
     numPixels = int(height)
@@ -21,4 +26,3 @@ def drawColorGradientVertical(canvas, x, y, width, height, rgb1, rgb2):
                            fill = mapPercentToLegendColor(percent,
                                                           rgb1,
                                                           rgb2))
-    
