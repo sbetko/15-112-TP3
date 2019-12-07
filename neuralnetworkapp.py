@@ -22,10 +22,6 @@ from mygraphicslib import *
 # For serialization/deserialization of the network
 import pickle
 
-# This is for performance purposes
-import psutil
-psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
-
 # Things To Do:
 # DONE: Add CSV read-support
 # DONE: Add a graph for the loss function with matplotlib
@@ -44,6 +40,9 @@ psutil.Process(os.getpid()).nice(psutil.REALTIME_PRIORITY_CLASS)
 
 # The first mode the user sees
 class StartMode(Mode):
+    BACKGROUND_FREQ = 900
+    BACKGROUND_RGB1 = "255050000"
+    BACKGROUND_RGB2 = "000050255"
     def appStarted(self):
         self.app.initDisplayPieceNetwork()
         self.panels = []
@@ -58,42 +57,39 @@ class StartMode(Mode):
     # Makes a lightshow on the splash screen
     def timerFired(self):
         self.timer += self.app.timerDelay
-        if self.timer % 900 == 0:
+        if self.timer % self.BACKGROUND_FREQ == 0:
             self.app.network.initializeParameters()
 
-    # Checks if 
+    # Checks if user interacted with any panels
     def mousePressed(self, event):
         point = (event.x, event.y)
-        bounds = self.mainPanel.getBounds()
-        if pointInBounds(point, bounds):
-            self.mainPanel.mousePressed(point)
+        self.app.doPanelPress(point, self.panels)
 
+    # Initializes the main center panel
     def configureMainPanel(self):
         cx, cy = self.app.width/2, self.app.height/2
-        width, height = self.app.width/5, self.app.height/3
+        width, height = self.app.width/5, self.app.height/4
         self.mainPanel = Panel(cx, cy, width, height)
         
         configModeButton = Button(self.switchToConfigMode, "Design Network")
-        aboutModeButton = Button(self.switchToAboutMode, "About")
         importModelButton = Button(self.importModel, "Import Model")
 
         self.mainPanel.addButton(configModeButton)
         self.mainPanel.addButton(importModelButton)
-        self.mainPanel.addButton(aboutModeButton)
         self.panels.append(self.mainPanel)
 
+    # Switches to the network design mode
     def switchToConfigMode(self):
         self.app.initNetwork()
         self.app.setActiveMode(self.app.configMode)
     
-    def switchToAboutMode(self):
-        self.app.setActiveMode(self.app.infoMode)
-    
     # Follows Python 3 docs here for unpickling objects:
     # https://docs.python.org/3/library/pickle.html#pickling-class-instances
     def importModel(self):
-        fileName = self.app.getUserInput("Please enter the filename (no extension)\n"
-                                    +"(Must be in program's working directory)")
+        fileName = self.app.getUserInput(
+            "Please enter the filename with no extension\n"
+            +"(Must be in program's working directory)"
+            )
         myNetwork = None
         try:
             with open(fileName + ".nn", 'rb') as f :
@@ -101,8 +97,10 @@ class StartMode(Mode):
             
             self.loadModel(myNetwork)
         except:
-            self.app.showMessage("Failed to load from file, please check that"
-                                +" you entered the correct filename.")
+            self.app.showMessage(
+                "Failed to load from file, please check that"
+                " you entered the correct filename."
+                )
     
     def loadModel(self, myNetwork):
         self.app.network = myNetwork
@@ -115,26 +113,16 @@ class StartMode(Mode):
         canvas.create_text(self.app.width/2, self.app.height / 10,
                            text = title, font = titleFont)
         self.app.drawNetwork(canvas, visualizeParams = True,
-                             rgb1 = "255050000", rgb2 = "000050255")
+                             rgb1 = self.BACKGROUND_RGB1,
+                             rgb2 = self.BACKGROUND_RGB2)
         self.mainPanel.drawPanelVertical(canvas)
-
-class InfoMode(Mode):
-    def appStarted(self):
-        pass
-
-    def keyPressed(self, event):
-        self.app.setActiveMode(self.app.startMode)
-
-    def redrawAll(self, canvas):
-        canvas.create_text(self.app.width // 2, self.app.margin,
-                           text = "Build-Your-Own Multi-Layer-Perceptron",
-                           font = "Helvetica 20")
 
 class ConfigMode(Mode):
     def appStarted(self):
         self.configurePanels()
         self.warningMessages = dict()
     
+    # Configures the main panels 
     def configurePanels(self):
         self.panels = []
         self.app.configureBackPanel("<- Main Menu", self)
@@ -142,6 +130,8 @@ class ConfigMode(Mode):
         self.app.configureNextPanel("Train ->", self)
         self.app.allPanels.append(self.panels)
 
+    # Initializes the control panel with dataset and activation function
+    # togglers, and a configuration reset button
     def configureControlPanel(self):
         width = self.app.width / 5
         height = self.app.height / 10
@@ -159,18 +149,21 @@ class ConfigMode(Mode):
         self.controlPanel.addButton(self.activationButton)
         self.controlPanel.addButton(self.resetButton)
         self.panels.append(self.controlPanel)
-
     
+    # Sets app mode to the start mode
     def goBack(self):
         self.app.setActiveMode(self.app.startMode)
     
+    # Sets app mode to the train mode
     def goNext(self):
         self.switchToTrainMode()
     
+    # Checks if user clicked on any panels
     def mousePressed(self, event):
         point = (event.x, event.y)
         self.app.doPanelPress(point, self.panels)
 
+    # Handles keyboard input and shortcuts
     def keyPressed(self, event):
         newDims = None
         if event.key == "Right":
@@ -203,20 +196,26 @@ class ConfigMode(Mode):
             self.app.network.resize(newDims)
             self.app.updateNetworkViewModel()
 
+    # Switches back to the default network parameters
     def switchToDefaultParams(self):
         args = self.app.defaultParameters
         self.app.updateNetworkConfiguration(**args)
 
+    # Toggles through the activation functions
     def switchActivationFunction(self):
         self.app.activationFunctionIndex = (self.app.activationFunctionIndex + 1) % len(self.app.ACTIVATION_FUNCTIONS)
 
         args = {'activation' : self.app.activationFunctionIndex}
         self.app.updateNetworkConfiguration(**args)
 
+    # Toggles through the active dataset
     def switchDataset(self):
         self.app.datasetIndex = (self.app.datasetIndex + 1) % len(self.app.datasets)
         self.app.data = self.app.datasets[self.app.datasetIndex]
 
+    # Switches app mode to training mode if network architecture
+    # is in agreement with the chosen dataset, otherwise configures the
+    # appropriate warning messages
     def switchToTrainMode(self):
         inputsConfigured = self.app.network.dims[0] == self.app.data.numFeatures
         outputsConfigured = self.app.network.dims[-1] == self.app.data.numLabels
@@ -248,6 +247,7 @@ class ConfigMode(Mode):
                 return
         self.app.setActiveMode(self.app.trainMode)
 
+    # Draws onto the configuration mode canvas
     def redrawAll(self, canvas):
         self.app.drawNetwork(canvas, visualizeParams = False, doStipple = False)
         s = ("Configuration Mode\n\n"
@@ -267,17 +267,23 @@ class ConfigMode(Mode):
         self.app.drawConfigInfo(canvas)
         self.app.drawPanels(canvas, self.panels)
 
+# Mode responsible for training the network
 class TrainMode(Mode):
+    # This is the minimum scale of the x-axis, if there are no points
+    # with an x-value greater than this value then the graph will not
+    # automatically resize to be smaller.
     LOSS_GRAPH_X_MIN = 20
+    # This is the color of the curve drawn on the graph
     LOSS_GRAPH_COLOR = "Blue"
     LOSS_GRAPH_ROWS = 5
     LOSS_GRAPH_COLS = 5
+    # Each tuple (RGB1, RGB2) specifies a continuous color gradient from
+    # RGB1 to RGB2, defining the network's color visualization scheme
     COLOR_SCHEME_PRESETS = [("255050000", "000050255"),
                             ("255050050", "000255050"),
                             ("050255000", "050000255")]
 
     def appStarted(self):
-        self.mouse = (0,0)
         self.configurePanels()
         self.timerDelay = 100
         self.colorSchemeIndex = 0
@@ -290,14 +296,18 @@ class TrainMode(Mode):
         self.toggleVisualization(forceOn = True)
         self.isTraining = False
         self.manualStep = 1
-        self.autoStep = 50
+        self.autoStep = 1
         self.showHelp = False
         self.currentLoss = 0
+        # If the network had an export state then load in the state of its
+        # training
         if self.app.network.exportState != None:
             self.loadTrainState()
+        # Otherwise initialize anything that still needs to be initialized
         else:
             self.initializeLossGraph()
 
+    # Configures all of the UI panels 
     def configurePanels(self):
         self.panels = []
         self.app.configureBackPanel("<- Configuration", self)
@@ -306,6 +316,9 @@ class TrainMode(Mode):
         self.app.configureNextPanel("Test ->", self)
         self.app.allPanels.append(self.panels)
     
+    # Configures the control panel that holds the learning rate button,
+    # reset training button, hover visualization mode toggle button, and
+    # color scheme change button.
     def configureControlPanel(self):
         width = self.app.width / 7
         height = self.app.height / 5
@@ -322,6 +335,7 @@ class TrainMode(Mode):
         self.controlPanel.addButton(self.colorButton)
         self.panels.append(self.controlPanel)
     
+    # Configure the panel that holds the start/stop training toggle button
     def configureStartPanel(self):
         width = self.app.width / 10
         height = self.app.height / 20
@@ -335,13 +349,16 @@ class TrainMode(Mode):
         self.startPanel.addButton(self.startStopButton)
         self.panels.append(self.startPanel)
 
+    # Go to the previous page
     def goBack(self):
         self.switchToConfigMode()
     
+    # Go to the next page
     def goNext(self):
         self.isTraining = False
         self.app.setActiveMode(self.app.testMode)
     
+    # Specifies the learning rate
     def setLearningRate(self):
         s = "Enter a number between 0 and 10"
         userInput = self.app.getUserInput(s)
@@ -353,17 +370,21 @@ class TrainMode(Mode):
         except:
             self.app.showMessage("Not a valid number! Please try again.")
 
+    # Resets the training mode
     def reset(self):
         self.colorSchemeIndex = 0
         self.restartTraining()
 
+    # Toggles through the colors scheme presets
     def changeColorScheme(self):
         self.colorSchemeIndex = ((self.colorSchemeIndex + 1)
                                  % len(self.COLOR_SCHEME_PRESETS))
     
+    # Toggles training on or off
     def toggleTraining(self):
         self.isTraining = False if self.isTraining else True
 
+    # Loads in the training state of the network
     def loadTrainState(self):
         state = self.app.network.exportState
         self.app.data = state['data']
@@ -372,10 +393,12 @@ class TrainMode(Mode):
         self.currentLoss = state['currentLoss']
         self.maxLoss = state['maxLoss']
 
+    # Called when the mode is activated
     def modeActivated(self):
         self.doSoloHover = False
         self.toggleVisualization(forceOn = True)
 
+    # Checks for keyboard input and shortcuts
     def keyPressed(self, event):
         if event.key == "Right":
             self.doTraining(self.manualStep)
@@ -398,6 +421,7 @@ class TrainMode(Mode):
         elif event.key == "Enter":
             self.nextButton.activate()
     
+    # Checks for panel or node presses
     def mousePressed(self, event):
         r = self.app.r
         point = (event.x, event.y)
@@ -412,10 +436,11 @@ class TrainMode(Mode):
                     self.doSoloHover = False
                     self.selectedNodeCoords.add(node)
 
+    # Checks for node hovering and sets the hovered node
+    # appropriately
     def mouseMoved(self, event):
         r = self.app.r
         mouse = (event.x, event.y)
-        self.mouse = mouse
         for node in self.app.nodeCoordinatesSet:
             if pointInCircle(r, node, mouse):
                 self.hoveredNode = node
@@ -426,10 +451,12 @@ class TrainMode(Mode):
                 self.hoveredNode = None
                 self.toggleVisualization(forceOn = True)
 
+    # Sets the node to be solo-viewed
     def setSoloNode(self, node):
         self.toggleVisualization(forceOff = True)
         self.selectedNodeCoords = set((node,))
     
+    # Toggles the hover-on-neuron-to-view-solo mode
     def toggleHoveringMode(self):
         if self.doSoloHover:
             self.toggleVisualization(forceOn = True)
@@ -438,6 +465,7 @@ class TrainMode(Mode):
             self.toggleVisualization(forceOff = True)
             self.doSoloHover = True
     
+    # Toggles visualization with option to force specific state
     def toggleVisualization(self, forceOff = False, forceOn = False):
         if forceOn:
             self.enableVisualization()
@@ -450,55 +478,58 @@ class TrainMode(Mode):
             else:
                 self.disableVisualization()
 
+    # Turns visualization back on
     def enableVisualization(self):
         self.isVisualizing = True
         coords = self.app.nodeCoordinates
         self.selectedNodeCoords = set(flatten2dList(self.app.nodeCoordinates))
 
+    # Disables visualizing the parameters
     def disableVisualization(self):
         self.isVisualizing = False
         self.selectedNodeCoords = set()
 
+    # Goes back to configuration mode
     def switchToConfigMode(self):
         self.restartTraining()
         self.hoveredNode = None
         self.toggleVisualization(forceOn = True)
         self.app.setActiveMode(self.app.configMode)
     
+    # Restarts the training process
     def restartTraining(self):
         self.isTraining = False
         self.app.alpha = 1
         self.app.network.initializeParameters()
         self.initializeLossGraph()
     
+    # Initializes the graph of the loss function vs iteration
     def initializeLossGraph(self):
         self.lossPerEpoch = []
         self.maxLoss = -1
-        self.minLoss = 100
-        self.calculateLoss()
+        self.testNetworkAgainstValidationSet()
 
     # Performs training
     def timerFired(self):
         if self.isTraining:
-            self.doTraining(1)
+            self.doTraining(self.autoStep)
 
-    # Calculates the loss of the network on the validation set and accuracy
-    # yHat is predicted y value
-    def calculateLoss(self):
+    # Calculates the loss and accuracy of the network on the validation set
+    def testNetworkAgainstValidationSet(self):
         cost = 0
         numCorrect = 0
 
         for example in self.app.data.validation:
             # Loss calculation
             x = example[0]
-            yHat = self.app.network.forwardPropagation(x)
+            predictedY = self.app.network.forwardPropagation(x)
             y = example[1]
-            cost += self.app.network.cost(y, yHat)
+            cost += self.app.network.cost(y, predictedY)
             # Accuracy calculation
             highestPercentage = -1
-            for i in range(len(yHat)):
-                if yHat[i][0] > highestPercentage:
-                    highestPercentage = yHat[i][0]
+            for i in range(len(predictedY)):
+                if predictedY[i][0] > highestPercentage:
+                    highestPercentage = predictedY[i][0]
                     winningLabelIndex = i
 
             # test against true label
@@ -510,32 +541,28 @@ class TrainMode(Mode):
         epochLossTuple = (self.app.network.numTrainingIterations,
                           self.currentLoss)
         self.lossPerEpoch.append(epochLossTuple)
-        self.updateLossMaxMin()
+        self.updateLossMax()
 
-    # Updates the maximum and minimum recorded loss for the current training
+    # Updates the maximum recorded loss for the current training
     # session. Must be called after every loss calculation as it only uses
     # the current loss for comparison.
-    def updateLossMaxMin(self):
+    def updateLossMax(self):
         if self.currentLoss > self.maxLoss:
             self.maxLoss = self.currentLoss
-        elif self.currentLoss <= self.minLoss:
-            self.minLoss = self.currentLoss
 
-    # Performs the specified number of training iterations and calculates the loss
-    # afterwards
+
+    # Performs the specified number of training iterations and calculates the
+    # loss afterwards
     def doTraining(self, iterations):
         self.app.network.train(self.app.data.train, iterations, self.app.alpha)
-        numCorrect = self.app.network.test(self.app.data.validation)
-        self.validationAccuracy = f'{numCorrect}/{len(self.app.data.validation)}'
-        print(f'{numCorrect}/{len(self.app.data.validation)}')
-        self.calculateLoss()
+        self.testNetworkAgainstValidationSet()
 
     # Draw axes and associated values for loss graph
     def drawLossGraphGrid(self, canvas, h, w, tY, bY, rX, lX):
         # Left Axis Title and end-point values
 
         # Learned how to get the function name as a string using __name__ here:
-        # https://stackoverflow.com/questions/251464/how-to-get-a-function-name-as-a-string
+        # https://docs.python.org/3/library/stdtypes.html#special-attributes
         lossFunction = self.app.network.cost.__name__
         canvas.create_text(lX - 25, (bY - h/2), text = f'Loss ({lossFunction})',
                             angle = 90, anchor = "s")
@@ -569,6 +596,8 @@ class TrainMode(Mode):
             tickVal = "%0.0f" % (roundHalfUp((col / self.LOSS_GRAPH_COLS)*xMax))
             canvas.create_text(col*dCol+lX, bY, text = tickVal, anchor = "n")
 
+    # Draws the values associated with the currently hovered on node onto the 
+    # canvas
     def drawHoverTooltip(self, canvas):
         w = self.app.height // 4
         tY = self.app.margin + self.app.height // 2 # just below loss graph
@@ -587,6 +616,7 @@ class TrainMode(Mode):
                 s = self.readParametersAtNodeIndex(myNodeIndex)
             canvas.create_text(lX, tY, text = s, anchor = "ne")
 
+    # Reads the parameters values at the node index in the network
     def readParametersAtNodeIndex(self, nodeIndex):
         s = weightString = biasString = labelString = ""
         layer, node = nodeIndex
@@ -604,9 +634,11 @@ class TrainMode(Mode):
         
         return s + labelString + weightString + biasString
     
+    # Reads the name of the label at the output node
     def readLabelAtOutputNode(self, node):
         return f'Label: {self.app.data.labels[node]}\n\n'
     
+    # Reads the weights at a node index in the network
     def readWeightsAtNodeIndex(self, nodeIndex):
         s = ""
         layer, node = nodeIndex
@@ -617,6 +649,7 @@ class TrainMode(Mode):
             s += f"w{outgoingWeightIndex} = {truncatedWeightValString}\n"
         return s + '\n'
     
+    # Reads the biaes at a node index in the network
     def readBiasesAtNodeIndex(self, nodeIndex):
         s = ""
         layer, node = nodeIndex
@@ -627,6 +660,7 @@ class TrainMode(Mode):
             s += f"b = {truncatedBiasValString}"
         return s + '\n'
         
+    # Finds the index of the node in the network given the view coordinates
     def findNodeIndexFromCoordinates(self, x, y):
         for layerIndex in range(len(self.app.nodeCoordinates)):
             for nodeIndex in range(len(self.app.nodeCoordinates[layerIndex])):
@@ -637,8 +671,8 @@ class TrainMode(Mode):
     # Draws loss graph in top left
     def drawLossGraph(self, canvas):
         h = w = self.app.height // 4            # height, width
-        tY = self.app.margin * 3              # top Y
-        bY = self.app.margin * 3 + h                # bottom Y
+        tY = self.app.margin * 3                # top Y
+        bY = self.app.margin * 3 + h            # bottom Y
         rX = self.app.width - self.app.margin   # right X
         lX = rX - w                             # left X
 
@@ -677,6 +711,7 @@ class TrainMode(Mode):
         canvas.create_text(legendRightX, legendTopY + legendHeight/2, text = " 0", anchor = "w")
         canvas.create_text(legendRightX, legendBottomY, text = bot, anchor = "w")
 
+    # Draws train mode animation onto the canvas
     def redrawAll(self, canvas):
         rgb1, rgb2 = self.COLOR_SCHEME_PRESETS[self.colorSchemeIndex]
         self.app.drawNetwork(canvas, rgb1 = rgb1, rgb2 = rgb2)
@@ -713,7 +748,9 @@ class TrainMode(Mode):
         self.drawColorLegend(canvas)
         self.app.drawPanels(canvas, self.panels)
 
+# Mode for performance evaluation of the network and model export
 class TestMode(Mode):
+    # The RGB1 and RGB2 values for the confusion matrix color legend
     RGB1 = "247251255"
     RGB2 = "008048107"
     def appStarted(self):
@@ -730,12 +767,15 @@ class TestMode(Mode):
         self.f1ScoreFormatted = '%0.5f' % self.f1Score
         self.configurePanels()
     
+    # Configures all of the panels
     def configurePanels(self):
         self.panels = []
         self.configureMainPanel()
         self.app.configureBackPanel("<- Main Menu", self)
         self.app.allPanels.append(self.panels)
     
+    # Configures the main panel which holds the maine menu button
+    # and export model button
     def configureMainPanel(self):
         x, y = self.app.width / 2, self.app.height / 2
         width = self.app.width / 15
@@ -746,11 +786,12 @@ class TestMode(Mode):
         self.mainPanel.addButton(exportModelButton)
         self.panels.append(self.mainPanel)
     
+    # Goes back to the start mode
     def goBack(self):
         self.app.setActiveMode(self.app.startMode)
     
-    # I used the method described in the Python 3 docs to write to pickle an
-    # object
+    # I used the method described in the Python 3 docs to serialize an
+    # object using the standard python pickle module
     # https://docs.python.org/3/library/pickle.html#module-pickle
     def exportModel(self):
         fileName = self.app.getUserInput("Please enter a filename") + '.nn'
@@ -767,6 +808,7 @@ class TestMode(Mode):
         pickle.dump(self.app.network, f)
         f.close()
     
+    # Checks for the escape button to go back to start mode
     def keyPressed(self, event):
         if event.key == "Escape":
             self.app.setActiveMode(self.app.startMode)
@@ -783,8 +825,8 @@ class TestMode(Mode):
     # Generates a 2d list of the confusion maatrix with rows representing
     # predicted class and columns representing the actual (true) class.
     def generateConfusionMatrix(self):
-        network = self.app.network
-        results = [(network.forwardPropagation(x), y) for (x, y) in self.testData]
+        net = self.app.network
+        results = [(net.forwardPropagation(x), y) for (x, y) in self.testData]
         matrix = make2dList(self.numLabels, self.numLabels)
         for predicted, actual in results:
             winningLabelIndex = None
@@ -804,10 +846,8 @@ class TestMode(Mode):
     # Constructs and draws the confusion matrix onto the canvas with a
     # gradated color legend
     def drawConfusionMatrix(self, canvas, x, y, width, height):
-        # Matrix
-        canvas.create_rectangle(x, y, x + width, y + height)
-        dRow = height/self.numLabels
-        dCol = width/self.numLabels
+        dRow = height/self.numLabels        # Change in y value between rows
+        dCol = width/self.numLabels         # Change in x value betwen cols
         # Titles
         canvas.create_text(x, y + height/2, text = "Predicted Class\n\n",
                            angle = 90, anchor = "s", font = "Arial 9 bold")
@@ -823,23 +863,28 @@ class TestMode(Mode):
             nextRowY = dRow*(row + 1) + y
             midY = (rowY + nextRowY) / 2
             canvas.create_line(x, rowY, x + width, rowY)
-            label = self.app.data.labels[row]
-            canvas.create_text(x, midY, text = label, angle = 90, anchor = "s")
+            rowLabel = self.app.data.labels[row]
+            canvas.create_text(x, midY, text = rowLabel, angle = 90,
+                               anchor = "s")
             for col in range(self.numLabels):
-                label = self.app.data.labels[col]
                 colX = dCol*(col) + x
                 nextColX = dCol*(col + 1) + x
                 midX = (colX + nextColX) / 2
                 canvas.create_line(colX, y, colX, y + height)
-                count = self.confusionMatrix[row][col] 
+                # Draws column label
+                colLabel = self.app.data.labels[col]
+                canvas.create_text(midX, y, text = colLabel, anchor = "s")
+                # Shades the cell according to its relative magnitude, with
+                # respect to the highest magnitude cell
+                count = self.confusionMatrix[row][col]
                 fill = mapPercentToLegendColor(count / (maxCount + 1),
                                                self.RGB1, self.RGB2)
                 canvas.create_rectangle(colX, rowY, nextColX, nextRowY,
                                         fill = fill)
+                # The percentage of the whole dataset that this cell represents
                 marginalPercentString = "%0.2f" % (count / self.numExamples)
                 cellText = f'{count} ({marginalPercentString})'
                 canvas.create_text(midX, midY, text = cellText)
-                canvas.create_text(midX, y, text = label, anchor = "s")
         
         # Color legend
         legendXOffset = self.app.width / 100
@@ -919,7 +964,7 @@ class TestMode(Mode):
 
     # Based on formulas in the ICML 2004 Notes on classification performance
     # metrics: http://people.cs.bris.ac.uk/~flach/ICML04tutorial/ 
-    # Calculates F1 score based on 2 * PRECISION * RECALL / (PRECISION + RECALL)
+    # Calculates F1 score based on 2*PRECISION * RECALL / (PRECISION + RECALL)
     def calculateF1(self):
         return 2 * self.precision * self.recall / (self.precision + self.recall)
         
@@ -937,6 +982,8 @@ class NeuralNetworkApp(ModalApp):
     ACTIVATION_FUNCTION_NAMES = ["Logistic", "TanH"]
     ACTIVATION_FUNCTIONS = {"Logistic" : logistic, "TanH" : tanH}
     NODE_RADIUS_RATIO = 1/40
+    # The ceiling above which parameter values will not be further distinguished
+    # by color 
     COLORIZATION_BOUND = 3
 
     # Starts the Neural Network App
@@ -959,14 +1006,15 @@ class NeuralNetworkApp(ModalApp):
         self.configMode = ConfigMode()
         self.trainMode = TrainMode()
         self.testMode = TestMode()
-        self.infoMode = InfoMode()
         self.setActiveMode(self.startMode)
     
+    # Initializes a background display-network (only a prop, cannot be trained)
     def initDisplayPieceNetwork(self):
         dims = [4, 7, 6, 1, 1, 6, 7, 4]
         self.network = NeuralNetwork(dims, None)
         self.updateNetworkViewModel()
 
+    # Initializes a network for training using the default network parameters
     def initNetwork(self):
         dims = copy.copy(self.defaultParameters['dims'])
         funcName = self.ACTIVATION_FUNCTION_NAMES[self.defaultParameters['activation']]
@@ -986,7 +1034,7 @@ class NeuralNetworkApp(ModalApp):
         self.datasetIndex = kwargs.get('dataset', self.datasetIndex)
         self.updateNetworkViewModel()
 
-    # Finds all CSV files in the working directory
+    # Finds all CSV files in the working directory and returns a list of them
     def findAllDatasetsInDirectory(self):
         filepaths = listFiles('datasets', suffix = '.csv')
         datasetList = []
@@ -1021,9 +1069,9 @@ class NeuralNetworkApp(ModalApp):
     def sizeChanged(self):
         self.updateAllPanelViewModels()
         self.updateNetworkViewModel()
-        # FIXME: For some reason, resizing the window affects the hover mode
-        #        in TrainMode, but this if statement undoes that change. Need to
-        #        find the cause of this bug though.
+        # FIXME: For some reason, resizing the window weirdly affects the hover
+        #        mode in TrainMode, but this if statement undoes that change.
+        #        Need to find the cause of this bug though.
         if self._activeMode == self.trainMode:
             self.trainMode.toggleHoveringMode()
             self.trainMode.toggleHoveringMode()
@@ -1106,6 +1154,10 @@ class NeuralNetworkApp(ModalApp):
                 self.drawWeights(canvas, l, n, coords, r, visualizeParams,
                                  visualizeMe, doStipple, rgb1, rgb2)
 
+    # Call this to update the view-model representation of the network's
+    # individual nodes. This method populates a jagged 2d list L where L[i][j]
+    # contains a tuple (x, y) of the coordinates of the jth node in the ith
+    # layer of the network.
     def regenerateNodeCoordinates(self):
         nodes = []
         cy = self.height / 2                        # Network center y
@@ -1123,6 +1175,9 @@ class NeuralNetworkApp(ModalApp):
                 nodes[-1].append(nodeCoord)
         self.nodeCoordinates = nodes
     
+    # Call this to update the view-model representation of the network's
+    # outermost bounds B on the canvas, where B is a 4-tuple containing
+    # the points on the corner of the rectangle circumscribing the network
     def regenerateNetworkViewBounds(self):
         coords = self.nodeCoordinates
         x = [point[0] for layer in coords for point in layer]
@@ -1131,10 +1186,14 @@ class NeuralNetworkApp(ModalApp):
         ay1, ay2 = min(y) - self.r, max(y) + self.r
         self.networkViewBounds = (ax1, ay1, ax2, ay2)
     
+    # Given a list of panels and a canvas, draws all the panels onto that canvas
     def drawPanels(self, canvas, panels):
         for panel in panels:
             panel.drawPanelVertical(canvas)
     
+    # Given a button title and a mode, configures a panel for that mode with a 
+    # backButton button for forward navigation. Requires the target mode to have
+    # a goNext function specifying the target mode and exit behavior.
     def configureNextPanel(self, name, mode):
         width = self.width / 10
         height = self.height / 30
@@ -1144,6 +1203,9 @@ class NeuralNetworkApp(ModalApp):
         mode.nextPanel.addButton(mode.nextButton)
         mode.panels.append(mode.nextPanel)
     
+    # Given a button title and a mode, configures a panel for that mode with
+    # a backButton button for backwards navigation. Requires the target mode
+    # to have a goBack function specifying the target mode and exit behavior.
     def configureBackPanel(self, name, mode):
         width = self.width / 10
         height = self.height / 30
@@ -1153,6 +1215,9 @@ class NeuralNetworkApp(ModalApp):
         mode.backPanel.addButton(mode.backButton)
         mode.panels.append(mode.backPanel)
     
+    # Given a mouse click point and a list of panels, checks if the user clicked
+    # on any buttons within any of the panels. If so, activate that button and
+    # return True, otherwise return False.
     def doPanelPress(self, point, panels):
         for panel in panels:
             bounds = panel.getBounds()

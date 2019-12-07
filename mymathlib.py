@@ -56,6 +56,8 @@ def getInBounds(x, lower, upper):
 # Journal of Artificial Intelligence and Expert Systems 1.4 (2011): 111-122.
 
 # The hyperbolic tangent function, may take a 2d, 1d, or scalar input
+# where order is the order of the derivative, and order 0 is the 0th order
+# derivative
 def tanH(x, order = 0):
     if isinstance(x, numbers.Number):
         if order == 0:
@@ -67,6 +69,8 @@ def tanH(x, order = 0):
         return applyFunctionToMatrix(tanH, x, order)
 
 # The logistic function, may take a 2d, 1d, or scalar input
+# where order is the order of the derivative, and order 0 is the 0th order
+# derivative
 def logistic(x, order = 0):
     if isinstance(x, numbers.Number):
         if order == 0:
@@ -77,6 +81,8 @@ def logistic(x, order = 0):
         return applyFunctionToMatrix(logistic, x, order)
 
 # Applies the provided function to a 2d or 1d list
+# where order is the order of the derivative, and order 0 is the 0th order
+# derivative
 def applyFunctionToMatrix(f, M, order):
     rows, cols = len(M), len(M[0])
     res = make2dList(rows, cols)
@@ -137,6 +143,8 @@ def transpose(M):
     return res
 
 # Performs MSE for a single training example
+# where order is the order of the derivative, and order 0 is the 0th order
+# derivative
 def MSE(observed, actual, order = 0):
     # perform elementwise MSE prime
     if order == 1:

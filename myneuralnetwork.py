@@ -80,7 +80,7 @@ class NeuralNetwork(object):
 
     # Returns the number of correctly predicted test samples based on "winner
     # takes all" (final classification goes to highest output node)
-    def test(self, data):
+    def testClassificationAccuracy(self, data):
         results = [(self.forwardPropagation(x), y) for (x, y) in data]
         count = 0
         for predicted, actual in results:
@@ -90,7 +90,7 @@ class NeuralNetwork(object):
                 if predicted[i][0] > highestPercentage:
                     highestPercentage = predicted[i][0]
                     winningLabelIndex = i
-            # test against true label
+            # Test against true label
             if actual[winningLabelIndex] == [1]:
                 count += 1
         return count
@@ -115,7 +115,7 @@ class NeuralNetwork(object):
             for layerBiasVec in self.b:
                 biasGradient.append(transpose([0]*len(layerBiasVec)))
 
-            # Backpropagation
+            # Backpropagation Algorithm
             for x, y in data:
                 weightGradientChange = []
                 biasGradientChange = []

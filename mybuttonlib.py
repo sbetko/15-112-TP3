@@ -40,8 +40,10 @@ class Panel(object):
         else:
             if "e" in anchor: self.x = x - self.width
             elif "w" in anchor: self.x = x
+            else: self.x = x - self.width / 2
             if "n" in anchor: self.y = y
             elif "s" in anchor: self.y = y - self.height
+            else: self.y = y - self.height / 2
         
     def sizeChanged(self, newWidth, newHeight, oldWidth, oldHeight):
         xChangeRatio = newWidth / oldWidth
