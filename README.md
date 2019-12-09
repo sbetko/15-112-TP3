@@ -17,6 +17,7 @@ This project also requires the pickle module, a standard python module for objec
 
 Shortcuts:
 In Train Mode
+
                 Press space to start or pause training.
 		
                 Press the right arrow key to skip forward 1 iteration
@@ -32,6 +33,7 @@ In Train Mode
                 Press escape to go back to configuration mode.
 
 In Configuration Mode
+
 	     	Press right and left arrow keys to add and remove layers.
 		
              	Press up and down arrow keys to add and remove neurons.
