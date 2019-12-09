@@ -34,7 +34,7 @@ In Train Mode
 
 In Configuration Mode
 
-	     	Press right and left arrow keys to add and remove layers.
+		Press right and left arrow keys to add and remove layers.
 		
              	Press up and down arrow keys to add and remove neurons.
 		
