@@ -1,0 +1,12 @@
+Datasets sourced from the UCI Machine Learning Repository:
+
+Dua, D. and Graff, C. (2019). UCI Machine Learning Repository [http://archive.ics.uci.edu/ml]. Irvine, CA: University of California, School of Information and Computer Science. 
+
+The Iris dataset (\datasets\Iris.csv), created by R.A. Fisher in 1936.
+https://archive.ics.uci.edu/ml/datasets/iris
+
+Banknote Authentication dataset ("\datasets\Banknote authentication.csv"), created by Volker Lohweg.
+http://archive.ics.uci.edu/ml/datasets/banknote+authentication
+
+Wheat seeds dataset (\datasets\Wheatseeds.csv) created by the Institute of Agrophysics of the Polish Academy of Sciences in Lublin in 2010.
+http://archive.ics.uci.edu/ml/datasets/seeds#
