@@ -18,17 +18,29 @@ This project also requires the pickle module, a standard python module for objec
 Shortcuts:
 In Train Mode
                 Press space to start or pause training.
+		
                 Press the right arrow key to skip forward 1 iteration
+		
                 Press r to reset weights and biases.
+		
                 Press t to change visualization mode.
+		
                 Press up or down to increase or decrease the learning rate.
+		
                 Press enter to test the model.
+		
                 Press escape to go back to configuration mode.
 
 In Configuration Mode
 	     	Press right and left arrow keys to add and remove layers.
+		
              	Press up and down arrow keys to add and remove neurons.
+		
              	Press a to change activation function.
+		
              	Press tab to change datasets.
+		
              	Press r for default settings.
+		
              	Press space to begin training.
+		
