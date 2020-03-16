@@ -1,6 +1,11 @@
+# pylint: disable=no-member
+
 # This file houses the neural network class with an implementation of the
 # gradient descent and backpropagation algorithms.
 from mymathlib import *
+from helpers112 import stringFormat2dList
+
+import numpy as np
 
 # The main Neural Network class
 class NeuralNetwork(object):
@@ -40,14 +45,17 @@ class NeuralNetwork(object):
         ret += "\n\n"
         return ret
 
-    # Initialize bias terms for each layer, first layer needs no bias term
+    # Initialize bias terms for each layer, first layer takes no bias term
     def initializeBiases(self):
         b = []
         for layerIndex in range(1, len(self.dims)):
+            b.append(makeGaussian2dList(self.dims[layerIndex], 1, 0, 1))
+            '''
             b.append([])
             for node in range(self.dims[layerIndex]):
                 b[layerIndex - 1].append(random.gauss(0, 1))
             b[layerIndex - 1] = transpose(b[layerIndex - 1])
+            '''
         return b
 
     # Initialize weights for each layer
@@ -56,7 +64,9 @@ class NeuralNetwork(object):
         # ith + 1 layer nodes correspond to rows of weight matrix
         # ith layer nodes correspond to columns of weight matrix
         for layerIndex in range(0, len(self.dims) - 1):
+            # i-th row of interlayer weight matrix corresponds to i-th node in proceeding layer
             rows = self.dims[layerIndex+1]
+            # j-th column of interlayer weight matrix corresponds to j-th node in current layer
             cols = self.dims[layerIndex]
             wMat = makeGaussian2dList(rows, cols, 0, 1)
             w.append(wMat)
@@ -66,17 +76,26 @@ class NeuralNetwork(object):
     # Goodfellow, Ian, Yoshua Bengio, and Aaron Courville. Deep learning. MIT press, 2016.
     def forwardPropagation(self, inputList):
         # Network input is just list of features
-        x = inputList[:]
+        activation = inputList[:]
         # Iterate through all layers in the network
         for layerIndex in range(self.numLayers - 1):
             # Retrieve the current biases and weights from network object
             layerBiasVec = self.b[layerIndex]
             layerWeightMat = self.w[layerIndex]
             # Compute z:vec = W:mat X x:vec
-            z = matProd(layerWeightMat, x)
+            z = matProd(layerWeightMat, activation)
             # Compute a = g(z + bias term)
-            x = self.activation(addVectors(z, layerBiasVec))
-        return x
+            activation = self.activation(addVectors(z, layerBiasVec))
+            '''
+            # Retrieve the current biases and weights from network object
+            layerBiasVec = self.b[layerIndex]
+            layerWeightMat = self.w[layerIndex]
+            # Compute z:vec = W:mat X x:vec
+            z = np.dot(layerweightMat, activation)
+            # Compute a = g(z + bias term)
+            activation = self.activation(z + layerBiasVec)
+            '''
+        return activation
 
     # Returns the number of correctly predicted test samples based on "winner
     # takes all" (final classification goes to highest output node)
@@ -104,60 +123,61 @@ class NeuralNetwork(object):
     # activations.
     def train(self, data, iterations, alpha):
         self.numTrainingIterations += iterations
-        for iteration in range(iterations):
+        for _ in range(iterations):
             random.shuffle(data)
             # Initialize matrices to hold weight and bias gradients
             weightGradient = []
             biasGradient = []
-            for layerWeightMat in self.w:
+            for layerWeightMat, layerBiasVec in zip(self.w, self.b):
                 rows, cols = len(layerWeightMat), len(layerWeightMat[0])
                 weightGradient.append(make2dList(rows, cols))
-            for layerBiasVec in self.b:
-                biasGradient.append(transpose([0]*len(layerBiasVec)))
+                rows = len(layerBiasVec)
+                biasGradient.append(make2dList(rows, 1))
 
             # Backpropagation Algorithm
             for x, y in data:
                 weightGradientChange = []
                 biasGradientChange = []
-                for layerWeightMat in self.w:
+                for layerWeightMat, layerBiasVec in zip(self.w, self.b):
                     rows, cols = len(layerWeightMat), len(layerWeightMat[0])
                     weightGradientChange.append(make2dList(rows, cols))
-                for layerBiasVec in self.b:
-                    biasGradientChange.append(transpose([0]*len(layerBiasVec)))
+                    rows = len(layerBiasVec)
+                    biasGradientChange.append(make2dList(rows, 1))
 
                 # 1. Set initial activation equal to just the input vector
                 a = x[:]
                 aMat = [a[:]]
-                zMat = list() # z is hypothesis before activation function
+                zbMat = list() # z is hypothesis before activation function
 
                 # 2. Propagate forwards to compute activations of all layers
-                for layer in range(len(self.w)): 
+                for layer in range(len(self.w)):
                     w, b = self.w[layer], self.b[layer]
                     z = matProd(w, a)
                     zb = addVectors(z, b)
                     a = self.activation(zb)
-                    zMat += [zb[:]]
+                    zbMat += [zb[:]]
                     aMat += [a[:]]
 
                 # 3. Compute error of output layer L and store for computing
-                #   errors of prior layers
-                error = hadamardProd(self.cost(aMat[-1], y, order = 1),
-                                     self.activation(zMat[-1], order = 1)) 
-                biasGradientChange[-1] = error 
-                weightGradientChange[-1] = matProd(error,
-                                                   transpose(aMat[-2])) 
+                #    errors of prior layers
+                derivativeOfCostFunctionAtActivation = self.cost(aMat[-1], y, order = 1)
+                derivativeOfActivationFunctionAtZb = self.activation(zbMat[-1], order = 1).transpose()
+                error = hadamardProd(derivativeOfCostFunctionAtActivation,
+                                     derivativeOfActivationFunctionAtZb).transpose()
+                biasGradientChange[-1] = error
+                weightGradientChange[-1] = matProd(error, transpose(aMat[-2])) 
 
                 # 4. Propagate backwards to compute errors of all layers
                 #    L-1, L-2,..., 2 and keep record of these results with
                 #    weightGradientChange and biasGradientChange (accumulator
                 #    variables for the error)
                 for layer in range(2, self.numLayers):
-                    z = zMat[-layer]
+                    zb = zbMat[-layer]
                     weightTimesError = matProd(transpose(self.w[-layer + 1]),
                                                error) 
-                    derivativeOfActivationAtZ = self.activation(z, order = 1) 
+                    derivativeOfActivationAtZb = self.activation(zb, order = 1) 
                     error = hadamardProd(weightTimesError,
-                                         derivativeOfActivationAtZ) 
+                                         derivativeOfActivationAtZb) 
                     biasGradientChange[-layer] = error
                     aT = transpose(aMat[-layer - 1])
                     weightGradientChange[-layer] = matProd(error, aT) 

@@ -1,3 +1,5 @@
+# pylint: disable=no-member
+
 # This file houses the program driver, the main app class
 # NeuralNetworkApp extending ModalApp, as well as all of its modes,
 # Start Mode, Configuration Mode, Training Mode, and Testing Mode.
@@ -224,7 +226,7 @@ class ConfigMode(Mode):
             self.warningMessages['inputWarn'] = ""
         else:
             self.warningMessages['inputWarn'] = (
-                (f'Dataset has {self.app.data.numFeatures} features but network' 
+                (f'Dataset has {self.app.data.numFeatures} features but network'
                 +f' input layer has {self.app.network.dims[0]} nodes.'))
 
         if outputsConfigured:
@@ -525,15 +527,17 @@ class TrainMode(Mode):
             predictedY = self.app.network.forwardPropagation(x)
             y = example[1]
             cost += self.app.network.cost(y, predictedY)
+
             # Accuracy calculation
             highestPercentage = -1
+            winningLabelIndex = None
             for i in range(len(predictedY)):
                 if predictedY[i][0] > highestPercentage:
                     highestPercentage = predictedY[i][0]
                     winningLabelIndex = i
 
             # test against true label
-            if y[winningLabelIndex] == [1]:
+            if y[winningLabelIndex][0] == [1]:
                 numCorrect += 1
 
         self.currentAccuracy = numCorrect / len(self.app.data.validation)
@@ -549,7 +553,6 @@ class TrainMode(Mode):
     def updateLossMax(self):
         if self.currentLoss > self.maxLoss:
             self.maxLoss = self.currentLoss
-
 
     # Performs the specified number of training iterations and calculates the
     # loss afterwards
@@ -836,8 +839,8 @@ class TestMode(Mode):
                     highestPercentage = predicted[i][0]
                     winningLabelIndex = i
             # Test against true label
-            actualLabelIndex = actual.index([1])
-            matrix[winningLabelIndex][actualLabelIndex] += 1
+            actualLabelIndex = np.argmax(actual)
+            matrix[winningLabelIndex, actualLabelIndex] += 1
             cellVal = matrix[winningLabelIndex][actualLabelIndex]  
             if cellVal > self.maxMarginalCount:
                 self.maxMarginalCount = cellVal
@@ -1150,7 +1153,6 @@ class NeuralNetworkApp(ModalApp):
                 self.drawBias(canvas, l, n, coords, r,
                                 visualizeParams, visualizeMe, rgb1, rgb2)
 
-                cx, cy = coords[l][n]
                 self.drawWeights(canvas, l, n, coords, r, visualizeParams,
                                  visualizeMe, doStipple, rgb1, rgb2)
 
@@ -1227,4 +1229,9 @@ class NeuralNetworkApp(ModalApp):
         return False
 
 if __name__ == "__main__":
-    NeuralNetworkApp(width = 1700, height = 900)
+    import cProfile, pstats
+    cProfile.run("NeuralNetworkApp(width = 1450, height = 800)", f'{__file__}.profile')
+    s = pstats.Stats(f'{__file__}.profile')
+    s.strip_dirs()
+    s.sort_stats("time").print_stats(10)
+    #NeuralNetworkApp(width = 1700, height = 900)
