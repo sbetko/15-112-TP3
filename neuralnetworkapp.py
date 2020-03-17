@@ -7,7 +7,7 @@
 import math, random, copy, numbers, os
 
 # Taken from course site: https://www.cs.cmu.edu/~112/notes/cmu_112_graphics.py
-from cmu_112_graphics import *
+from cmu_112_graphics import Mode, ModalApp
 from tkinter import *
 
 # Helper functions adapted from course website, citations included inside
